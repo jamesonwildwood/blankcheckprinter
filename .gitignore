@@ -9,3 +9,5 @@ CheckPrinter.app/
 CheckPrinter.icns
 packaging/CheckPrinter.iconset/
 packaging/icon_preview.png
+
+.DS_Store
