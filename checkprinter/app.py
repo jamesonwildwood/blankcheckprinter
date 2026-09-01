@@ -88,6 +88,13 @@ class CheckPrinterApp:
             e.grid(row=r, column=1, columnspan=2, sticky="w", **pad)
             r += 1
 
+        # Live warning if the check number is already in the register.
+        self.dup_lbl = ttk.Label(f, text="", foreground="#a00")
+        self.dup_lbl.grid(row=r, column=1, columnspan=2, sticky="w", padx=8)
+        r += 1
+        self.w_number.trace_add("write", lambda *a: self._update_dup_warning())
+        self._update_dup_warning()
+
         self.w_amount.trace_add("write", lambda *a: self._update_words())
         self.words_lbl = ttk.Label(f, text="", foreground="#444",
                                    font=("Helvetica", 11, "italic"))
@@ -118,6 +125,8 @@ class CheckPrinterApp:
                    command=self.generate_and_print).pack(side="left", padx=4)
         ttk.Button(btns, text="Print Alignment Test",
                    command=self.print_alignment).pack(side="left", padx=4)
+        ttk.Button(btns, text="View Check Log",
+                   command=self.show_log).pack(side="left", padx=4)
 
         note = ("When printing, choose Actual Size / Scale 100% (never "
                 "'Fit to Page') so everything lands in the right spot.\n"
@@ -189,6 +198,86 @@ class CheckPrinterApp:
         if "next_check_number" in self.vars:
             self.vars["next_check_number"].set(str(self.cfg["next_check_number"]))
 
+    def _register_rows(self):
+        """All rows from the register CSV as dicts (empty list if none)."""
+        try:
+            with open(cfgmod.REGISTER_PATH, newline="") as f:
+                return list(csv.DictReader(f))
+        except (FileNotFoundError, OSError):
+            return []
+
+    def _register_matches(self, number):
+        """Register rows whose check_number equals `number`."""
+        number = str(number).strip()
+        if not number:
+            return []
+        return [r for r in self._register_rows()
+                if str(r.get("check_number", "")).strip() == number]
+
+    def _update_dup_warning(self):
+        matches = self._register_matches(self.w_number.get())
+        if matches:
+            last = matches[-1]
+            self.dup_lbl.config(
+                text=f"⚠ #{self.w_number.get().strip()} already printed to "
+                     f"{last.get('payee','')} on {last.get('date','')} "
+                     f"(${last.get('amount','')})")
+        else:
+            self.dup_lbl.config(text="")
+
+    def _dup_ok_to_proceed(self, check):
+        """If the check number was already printed, confirm before reprinting."""
+        matches = self._register_matches(check["number"])
+        if not matches:
+            return True
+        last = matches[-1]
+        return messagebox.askyesno(
+            "Check number already used",
+            f"Check #{check['number']} was already printed on "
+            f"{last.get('date','')} to {last.get('payee','')} for "
+            f"${last.get('amount','')}.\n\nUse this number again anyway?")
+
+    def show_log(self):
+        """Open a window listing every recorded check (newest first)."""
+        rows = self._register_rows()
+        win = tk.Toplevel(self.root)
+        win.title("Check Log")
+        win.geometry("760x440")
+
+        top = ttk.Frame(win)
+        top.pack(fill="x", padx=8, pady=6)
+        ttk.Label(top, text=f"{len(rows)} check(s) recorded",
+                  font=("Helvetica", 12, "bold")).pack(side="left")
+        ttk.Button(top, text="Open CSV file",
+                   command=lambda: subprocess.run(["open", cfgmod.REGISTER_PATH])
+                   ).pack(side="right")
+
+        cols = [("check_number", "Check #", 70), ("date", "Date", 90),
+                ("payee", "Pay to", 210), ("amount", "Amount", 90),
+                ("memo", "Memo", 150), ("printed_at", "Printed", 140)]
+        frame = ttk.Frame(win)
+        frame.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        tree = ttk.Treeview(frame, columns=[c[0] for c in cols], show="headings")
+        for key, title, width in cols:
+            tree.heading(key, text=title)
+            tree.column(key, width=width, anchor="w")
+        sb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=sb.set)
+        tree.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+        for row in reversed(rows):
+            amt = row.get("amount", "")
+            try:
+                amt = f"${float(amt):,.2f}"
+            except (ValueError, TypeError):
+                pass
+            tree.insert("", "end", values=(row.get("check_number", ""),
+                        row.get("date", ""), row.get("payee", ""), amt,
+                        row.get("memo", ""), row.get("printed_at", "")))
+        if not rows:
+            ttk.Label(win, text="No checks recorded yet.",
+                      foreground="#555").pack(pady=8)
+
     def _list_printers(self):
         """Return (printer_names, default_name) from CUPS via lpstat."""
         printers = []
@@ -249,6 +338,8 @@ class CheckPrinterApp:
         check = self._collect_check()
         if not check:
             return
+        if not self._dup_ok_to_proceed(check):
+            return
         path = self._render(check)
         subprocess.run(["open", path])
         self._confirm_printed(check)
@@ -256,6 +347,8 @@ class CheckPrinterApp:
     def generate_and_print(self):
         check = self._collect_check()
         if not check:
+            return
+        if not self._dup_ok_to_proceed(check):
             return
         printer = self.w_printer.get().strip()
         self._save_printer()

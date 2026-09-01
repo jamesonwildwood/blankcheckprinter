@@ -101,8 +101,12 @@ check printer with MICR toner. Then:
 - **Print Alignment Test** — prints a 1-inch grid + perforation guides + MICR
   clear band + a left-transit marker to the **selected printer** (same print
   path as a real check), to dial in placement on your stock.
+- **View Check Log** — opens a window listing every recorded check (newest
+  first), with an **Open CSV file** button for the raw register.
 
-The **Printer** selection is remembered between runs.
+The **Printer** selection is remembered between runs. If you enter a check
+number that's already in the log, the field shows a red warning, and printing a
+used number asks you to confirm first.
 
 After either print button, you're asked **"Did that print OK?"**:
 
