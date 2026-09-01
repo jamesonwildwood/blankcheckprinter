@@ -39,11 +39,13 @@ DEFAULTS = {
     "num_stubs": 2,             # record stubs printed above the check (0-2)
     "offset_x": 0.0,            # global registration nudge, right = +
     "offset_y": 0.0,            # global registration nudge, up = +
-    "micr_baseline": 0.3125,    # MICR baseline height above page bottom
+    "micr_baseline": 0.4375,    # MICR baseline above page bottom (7/16"): high
+                                # enough to clear a typical printer bottom margin,
+                                # still inside the 5/8" clear band
     "micr_align": "left",       # MICR horizontal anchor: left | center | right
     "micr_left_margin": 1.0,    # gap from left paper edge to start of MICR (left align)
     "micr_right_margin": 0.3125,  # gap from right paper edge to end of MICR (right align)
-    "draw_border": True,        # draw a border around the check (open top)
+    "draw_border": False,       # draw a border around the check (open top)
     "draw_perf_guides": False,  # draw dashed perforation guide lines
     "signature_text": "AUTHORIZED SIGNATURE",
 }
