@@ -19,7 +19,8 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 
-from .micr import draw_micr_line, expand_template, micr_width
+from .micr import (draw_micr_line, expand_template, micr_width, PITCH,
+                   GLYPH_LEFT_PAD)
 
 PAGE_W, PAGE_H = letter                 # 612 x 792 pt (8.5 x 11 in)
 LM = 0.40 * inch                        # left margin inside the check
@@ -46,10 +47,25 @@ def _fmt_amount(amount):
     return f"{amount:,.2f}"
 
 
+def _transit_index(text):
+    """Index of the left Transit symbol ('A') in an expanded MICR string."""
+    i = text.find("A")
+    return i if i >= 0 else 0
+
+
 def _micr_right_x(cfg, text):
-    """Right-edge x for the MICR line given the configured horizontal anchor."""
-    align = cfg.get("micr_align", "right")
+    """Right-edge x for the MICR line given the configured horizontal anchor.
+
+    transit: micr_left_margin = inches from the left edge to the inked left edge
+             of the left Transit symbol (routing/transit stay fixed regardless of
+             how many digits the check number has).
+    """
+    align = cfg.get("micr_align", "transit")
     total = micr_width(text)
+    if align == "transit":
+        idx = _transit_index(text)
+        left = cfg.get("micr_left_margin", 3.0) * inch - idx * PITCH - GLYPH_LEFT_PAD
+        return left + total
     if align == "left":
         return cfg.get("micr_left_margin", 1.0) * inch + total
     if align == "center":
@@ -258,12 +274,20 @@ def build_alignment_pdf(cfg, out_path):
     # Sample MICR line so you can see where it lands
     sample = expand_template(cfg["micr_template"], cfg.get("routing", "") or "123456789",
                              cfg.get("account", "") or "0001234567", cfg["next_check_number"])
-    left = draw_micr_line(c, sample,
-                          right_x=_micr_right_x(cfg, sample),
-                          baseline_y=cfg["micr_baseline"] * inch,
-                          font_path=cfg.get("font_path") or None)
-    _label(c, left, cfg["micr_baseline"] * inch - 0.16 * inch,
+    base = cfg["micr_baseline"] * inch
+    left = draw_micr_line(c, sample, right_x=_micr_right_x(cfg, sample),
+                          baseline_y=base, font_path=cfg.get("font_path") or None)
+    _label(c, left, base - 0.16 * inch,
            f'MICR starts {left / inch:.2f}" from left edge', size=6)
+
+    # Mark the left Transit symbol so you can line it up to your target.
+    tx = left + _transit_index(sample) * PITCH + GLYPH_LEFT_PAD
+    c.setDash(2, 2)
+    c.setLineWidth(0.5)
+    c.line(tx, base, tx, base + 0.85 * inch)
+    c.setDash()
+    _label(c, tx + 0.03 * inch, base + 0.7 * inch,
+           f'left transit: {tx / inch:.2f}" from left', size=6)
 
     _label(c, LM, PAGE_H - 0.3 * inch,
            "ALIGNMENT TEST — 1in grid. Check band bottom = page bottom. "

@@ -42,8 +42,9 @@ DEFAULTS = {
     "micr_baseline": 0.4375,    # MICR baseline above page bottom (7/16"): high
                                 # enough to clear a typical printer bottom margin,
                                 # still inside the 5/8" clear band
-    "micr_align": "left",       # MICR horizontal anchor: left | center | right
-    "micr_left_margin": 1.0,    # gap from left paper edge to start of MICR (left align)
+    "micr_align": "transit",    # MICR anchor: transit | left | center | right
+    "micr_left_margin": 3.0,    # inches from left edge to the LEFT TRANSIT symbol
+                                # (transit align); or to the line start (left align)
     "micr_right_margin": 0.3125,  # gap from right paper edge to end of MICR (right align)
     "draw_border": False,       # draw a border around the check (open top)
     "draw_perf_guides": False,  # draw dashed perforation guide lines

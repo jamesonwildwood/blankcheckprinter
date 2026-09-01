@@ -32,8 +32,6 @@ LAYOUT_FIELDS = [
     ("num_stubs", "Record stubs above check (0-2)", "int"),
     ("offset_x", "Nudge everything X (in, right +)", "float"),
     ("offset_y", "Nudge everything Y (in, up +; raise if bottom clips)", "float"),
-    ("micr_baseline", "MICR baseline from bottom (in)", "float"),
-    ("micr_left_margin", "MICR left margin (in, for Left position)", "float"),
     ("micr_right_margin", "MICR right margin (in, for Right position)", "float"),
     ("signature_text", "Signature line label", "str"),
     ("draw_border", "Draw border around check", "bool"),
@@ -320,13 +318,30 @@ class CheckPrinterApp:
 
         ttk.Label(micr, text="MICR position").grid(row=5, column=0, sticky="e",
                                                    padx=8, pady=3)
-        self.vars["micr_align"] = tk.StringVar(value=self.cfg.get("micr_align", "left"))
+        self.vars["micr_align"] = tk.StringVar(value=self.cfg.get("micr_align", "transit"))
         ttk.Combobox(micr, textvariable=self.vars["micr_align"], state="readonly",
-                     values=["left", "center", "right"], width=12).grid(
+                     values=["transit", "left", "center", "right"], width=12).grid(
             row=5, column=1, sticky="w", padx=8, pady=3)
-        ttk.Label(micr, text="Left = anchor to 'MICR left margin'; adjust that + "
-                             "Nudge X in Layout to line up the routing number.",
-                  foreground="#555").grid(row=6, column=0, columnspan=2, sticky="w",
+
+        # Fine nudges (0.01" steps) for aligning the left transit symbol.
+        ttk.Label(micr, text="Left transit — from left (in)").grid(
+            row=6, column=0, sticky="e", padx=8, pady=3)
+        self.vars["micr_left_margin"] = tk.StringVar(
+            value=f"{float(self.cfg.get('micr_left_margin', 3.0)):.2f}")
+        ttk.Spinbox(micr, textvariable=self.vars["micr_left_margin"], from_=-2.0,
+                    to=8.0, increment=0.01, format="%.2f", width=10).grid(
+            row=6, column=1, sticky="w", padx=8, pady=3)
+
+        ttk.Label(micr, text="MICR height — from bottom (in)").grid(
+            row=7, column=0, sticky="e", padx=8, pady=3)
+        self.vars["micr_baseline"] = tk.StringVar(
+            value=f"{float(self.cfg.get('micr_baseline', 0.4375)):.2f}")
+        ttk.Spinbox(micr, textvariable=self.vars["micr_baseline"], from_=0.0,
+                    to=0.50, increment=0.01, format="%.2f", width=10).grid(
+            row=7, column=1, sticky="w", padx=8, pady=3)
+        ttk.Label(micr, text="'transit' anchors the left ⑆ symbol to the value "
+                             "above. Use the alignment test to measure.",
+                  foreground="#555").grid(row=8, column=0, columnspan=2, sticky="w",
                                           padx=8, pady=2)
 
         add_fields(section("Layout & Registration"), LAYOUT_FIELDS)
@@ -349,6 +364,9 @@ class CheckPrinterApp:
         kinds = {k: kind for k, _, kind in allfields}
         kinds["micr_template"] = "str"
         kinds["font_path"] = "str"
+        kinds["micr_align"] = "str"
+        kinds["micr_left_margin"] = "float"
+        kinds["micr_baseline"] = "float"
         for key, var in self.vars.items():
             kind = kinds.get(key, "str")
             val = var.get()

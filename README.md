@@ -106,7 +106,16 @@ lines to line up against, only the paper edges and perforations. To register:
 ## MICR line
 
 Drawn as vector shapes built to the ANSI X9 E-13B grid (module 0.013", 8
-characters/inch), so no font install is required. To use a licensed E-13B
+characters/inch), so no font install is required.
+
+**Positioning (Settings → MICR):** the **MICR position** dropdown chooses the
+anchor. `transit` (default) pins the **left Transit symbol (⑆)** to an exact
+distance from the left edge — set it with **Left transit — from left (in)** —
+and keeps the routing/transit fixed no matter how many digits the check number
+has. **MICR height — from bottom (in)** sets the vertical position. Both are
+0.01" spinboxes. The **Print Alignment Test** page marks where the left transit
+lands so you can dial it to your stock. (`left`/`center`/`right` anchor the
+whole line instead.) To use a licensed E-13B
 TrueType font instead, drop it in `fonts/` and pick it in Settings (see
 `fonts/README.txt`).
 
