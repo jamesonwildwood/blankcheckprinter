@@ -27,6 +27,12 @@ LM = 0.40 * inch                        # left margin inside the check
 RX = PAGE_W - 0.40 * inch               # right content edge
 CLEAR_BAND = 0.625 * inch               # MICR clear band; keep other ink above
 
+# Double-window envelope guides (OSDS Payroll, 3-7/8 x 9-1/4"), as (x, y, w, h)
+# in inches from the check's bottom-left, assuming the check is inserted flush to
+# the envelope's bottom-left. Bottom window = payee (recipient); top = return.
+ENV_BOTTOM_WINDOW = (0.875, 0.75, 3.5, 1.0)
+ENV_TOP_WINDOW = (0.375, 2.5, 3.5, 0.875)
+
 
 def _line(c, x1, x2, y, width=0.7):
     c.setLineWidth(width)
@@ -165,6 +171,11 @@ def draw_negotiable_check(c, cfg, check):
            align="center")
 
     # --- MICR line (clear band) ---
+    _draw_micr(c, cfg, check)
+
+
+def _draw_micr(c, cfg, check):
+    """Draw the MICR line from the configured template/anchor (shared)."""
     text = expand_template(cfg["micr_template"], cfg.get("routing", ""),
                            cfg.get("account", ""), check["number"])
     draw_micr_line(
@@ -173,6 +184,100 @@ def draw_negotiable_check(c, cfg, check):
         baseline_y=cfg["micr_baseline"] * inch,
         font_path=cfg.get("font_path") or None,
     )
+
+
+def draw_window_check(c, cfg, check):
+    """Window-envelope variant: company return address in the top window, payee
+    mailing address in the bottom window, bank name/city top-right-middle.
+
+    The address blocks can be nudged into your envelope's windows with the
+    window_payee_* / window_return_* offsets. Use the alignment test (window
+    format) to see the window outlines.
+    """
+    pdx = cfg.get("window_payee_dx", 0.0) * inch
+    pdy = cfg.get("window_payee_dy", 0.0) * inch
+    rdx = cfg.get("window_return_dx", 0.0) * inch
+    rdy = cfg.get("window_return_dy", 0.0) * inch
+
+    # --- Company return address (top window) ---
+    rx0 = 0.55 * inch + rdx
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(rx0, 3.26 * inch + rdy, cfg.get("company_name", ""))
+    c.setFont("Helvetica", 8.5)
+    yy = 3.08 * inch + rdy
+    for key in ("company_address", "company_citystate"):
+        if cfg.get(key):
+            c.drawString(rx0, yy, cfg[key])
+            yy -= 0.14 * inch
+
+    # --- Check number + fraction (top-right) ---
+    c.setFont("Helvetica", 8)
+    c.drawRightString(RX - 0.62 * inch, 3.28 * inch, "No.")
+    c.setFont("Helvetica-Bold", 13)
+    c.drawRightString(RX, 3.28 * inch, str(check["number"]))
+    if cfg.get("fraction"):
+        _label(c, RX, 3.08 * inch, cfg["fraction"], size=8, align="right")
+
+    # --- Bank name / city (top-right-middle) ---
+    bx = 4.75 * inch
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(bx, 3.0 * inch, cfg.get("bank_name", ""))
+    if cfg.get("bank_citystate"):
+        c.setFont("Helvetica", 8)
+        c.drawString(bx, 2.87 * inch, cfg["bank_citystate"])
+
+    # --- Date (solid band between the two windows) ---
+    date_y = 2.40 * inch
+    _line(c, RX - 1.75 * inch, RX, date_y)
+    c.setFont("Helvetica", 10)
+    c.drawString(RX - 1.65 * inch, date_y + 0.045 * inch, check.get("date", ""))
+    _label(c, RX - 0.875 * inch, date_y - 0.135 * inch, "DATE", size=6, align="center")
+
+    # --- Written amount line + DOLLARS (solid band) ---
+    words_y = 2.12 * inch
+    _line(c, LM, RX - 0.80 * inch, words_y)
+    c.setFont("Helvetica", 10.5)
+    c.drawString(LM + 0.04 * inch, words_y + 0.045 * inch, check.get("words", ""))
+    c.setFont("Helvetica-Bold", 9)
+    c.drawRightString(RX, words_y + 0.045 * inch, "DOLLARS")
+
+    # --- Amount box (solid band, just above the bottom window) ---
+    box_x0, box_x1 = RX - 1.45 * inch, RX
+    box_y0, box_y1 = 1.80 * inch, 2.00 * inch
+    c.setFont("Helvetica-Bold", 12)
+    c.drawRightString(box_x0 - 0.06 * inch, box_y0 + 0.05 * inch, "$")
+    c.setLineWidth(0.9)
+    c.rect(box_x0, box_y0, box_x1 - box_x0, box_y1 - box_y0, stroke=1, fill=0)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawRightString(box_x1 - 0.06 * inch, box_y0 + 0.055 * inch,
+                      "**" + _fmt_amount(check["amount"]))
+
+    # --- "PAY TO THE ORDER OF" + payee mailing address (bottom window) ---
+    _label(c, LM, 1.86 * inch, "PAY TO THE ORDER OF", size=6)
+    px0 = 1.00 * inch + pdx
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(px0, 1.50 * inch + pdy, check.get("payee", ""))
+    c.setFont("Helvetica", 10.5)
+    yy = 1.28 * inch + pdy
+    for line in (check.get("payee_address", ""), check.get("payee_citystate", "")):
+        if line:
+            c.drawString(px0, yy, line)
+            yy -= 0.20 * inch
+
+    # --- Memo (right of the bottom window) ---
+    _label(c, 4.70 * inch, 1.34 * inch, "MEMO", size=6)
+    _line(c, 5.20 * inch, RX, 1.34 * inch)
+    c.setFont("Helvetica", 9)
+    c.drawString(5.28 * inch, 1.38 * inch, check.get("memo", ""))
+
+    # --- Signature (bottom-right, right of the bottom window) ---
+    sig_y = 0.92 * inch
+    _line(c, RX - 2.7 * inch, RX, sig_y)
+    _label(c, (RX - 2.7 * inch + RX) / 2.0, sig_y - 0.145 * inch,
+           cfg.get("signature_text", "AUTHORIZED SIGNATURE"), size=6, align="center")
+
+    # --- MICR line ---
+    _draw_micr(c, cfg, check)
 
 
 def draw_stub(c, cfg, check, y_bottom, height):
@@ -227,10 +332,24 @@ def build_check_pdf(cfg, check, out_path):
     for i in range(cfg.get("num_stubs", 0)):
         draw_stub(c, cfg, check, y_bottom=(i + 1) * bh, height=bh)
 
-    draw_negotiable_check(c, cfg, check)
+    if cfg.get("check_format") == "window":
+        draw_window_check(c, cfg, check)
+    else:
+        draw_negotiable_check(c, cfg, check)
     c.showPage()
     c.save()
     return out_path
+
+
+def _draw_window_guides(c):
+    """Dashed outlines of the envelope windows, for the alignment test."""
+    c.setDash(4, 3)
+    c.setLineWidth(0.8)
+    for (x, y, w, h), name in ((ENV_BOTTOM_WINDOW, "BOTTOM WINDOW (payee)"),
+                               (ENV_TOP_WINDOW, "TOP WINDOW (return address)")):
+        c.rect(x * inch, y * inch, w * inch, h * inch, stroke=1, fill=0)
+        _label(c, x * inch + 0.05 * inch, (y + h) * inch + 0.05 * inch, name, size=7)
+    c.setDash()
 
 
 def build_alignment_pdf(cfg, out_path):
@@ -289,8 +408,13 @@ def build_alignment_pdf(cfg, out_path):
     _label(c, tx + 0.03 * inch, base + 0.7 * inch,
            f'left transit: {tx / inch:.2f}" from left', size=6)
 
+    # Envelope window outlines (window format only)
+    if cfg.get("check_format") == "window":
+        _draw_window_guides(c)
+
+    fmt = "WINDOW ENVELOPE" if cfg.get("check_format") == "window" else "STANDARD"
     _label(c, LM, PAGE_H - 0.3 * inch,
-           "ALIGNMENT TEST — 1in grid. Check band bottom = page bottom. "
+           f"ALIGNMENT TEST ({fmt}) — 1in grid. Check band bottom = page bottom. "
            f"Band height = {cfg['check_band_height']}in, stubs = {cfg['num_stubs']}.",
            size=8)
     c.showPage()

@@ -33,10 +33,17 @@ LAYOUT_FIELDS = [
     ("offset_x", "Nudge everything X (in, right +)", "float"),
     ("offset_y", "Nudge everything Y (in, up +; raise if bottom clips)", "float"),
     ("micr_right_margin", "MICR right margin (in, for Right position)", "float"),
+    ("window_payee_dx", "Window: nudge payee block X (in)", "float"),
+    ("window_payee_dy", "Window: nudge payee block Y (in)", "float"),
+    ("window_return_dx", "Window: nudge return address X (in)", "float"),
+    ("window_return_dy", "Window: nudge return address Y (in)", "float"),
     ("signature_text", "Signature line label", "str"),
     ("draw_border", "Draw border around check", "bool"),
     ("draw_perf_guides", "Draw dashed perforation guides", "bool"),
 ]
+
+FORMAT_LABELS = {"standard": "Standard single check", "window": "Window envelope"}
+FORMAT_VALUES = {v: k for k, v in FORMAT_LABELS.items()}
 
 
 class CheckPrinterApp:
@@ -71,17 +78,30 @@ class CheckPrinterApp:
         self.w_number = tk.StringVar(value=str(self.cfg["next_check_number"]))
         self.w_date = tk.StringVar(value=today)
         self.w_payee = tk.StringVar()
+        self.w_payee_addr = tk.StringVar()
+        self.w_payee_city = tk.StringVar()
         self.w_amount = tk.StringVar()
         self.w_memo = tk.StringVar()
+
+        # Format selector
+        ttk.Label(f, text="Format").grid(row=1, column=0, sticky="e", **pad)
+        self.w_format = tk.StringVar(
+            value=FORMAT_LABELS.get(self.cfg.get("check_format", "standard")))
+        fmt_cb = ttk.Combobox(f, textvariable=self.w_format, state="readonly",
+                              values=list(FORMAT_LABELS.values()), width=24)
+        fmt_cb.grid(row=1, column=1, sticky="w", **pad)
+        fmt_cb.bind("<<ComboboxSelected>>", lambda e: self._save_format())
 
         rows = [
             ("Check number", self.w_number),
             ("Date", self.w_date),
             ("Pay to the order of", self.w_payee),
+            ("Payee address (window format)", self.w_payee_addr),
+            ("Payee city, state ZIP (window format)", self.w_payee_city),
             ("Amount ($)", self.w_amount),
             ("Memo", self.w_memo),
         ]
-        r = 1
+        r = 2
         for label, var in rows:
             ttk.Label(f, text=label).grid(row=r, column=0, sticky="e", **pad)
             e = ttk.Entry(f, textvariable=var, width=48)
@@ -168,6 +188,8 @@ class CheckPrinterApp:
             "number": number,
             "date": self.w_date.get().strip(),
             "payee": self.w_payee.get().strip(),
+            "payee_address": self.w_payee_addr.get().strip(),
+            "payee_citystate": self.w_payee_city.get().strip(),
             "amount": amt,
             "words": amount_to_words(amt),
             "memo": self.w_memo.get().strip(),
@@ -311,9 +333,16 @@ class CheckPrinterApp:
         self.cfg["printer"] = self.w_printer.get()
         cfgmod.save(self.cfg)
 
+    def _save_format(self):
+        """Remember the selected check format across runs."""
+        self.cfg["check_format"] = FORMAT_VALUES.get(self.w_format.get(), "standard")
+        cfgmod.save(self.cfg)
+
     def _clear_check_fields(self):
         """Clear payee, amount and memo for the next check (keep date)."""
         self.w_payee.set("")
+        self.w_payee_addr.set("")
+        self.w_payee_city.set("")
         self.w_amount.set("")
         self.w_memo.set("")
 

@@ -88,6 +88,22 @@ Fill in and **Save Settings**:
 - **Layout & Registration** — next check number, check band height, number of
   stubs, and fine-registration nudges (see below).
 
+## Check formats
+
+Pick one in the **Format** dropdown on the Write a Check tab (remembered
+between runs):
+
+- **Standard single check** — company top-left, bank bottom-left, payee on the
+  "pay to the order of" line.
+- **Window envelope** — laid out for a double-window envelope: the payee's
+  **mailing address** (name + street + city/state/ZIP) sits in the **bottom
+  window**, your **company return address** in the **top window**, and the bank
+  name/city moves to the **top-right-middle**. Fill in the two extra
+  **Payee address** fields. Dial the blocks into your envelope's windows with
+  the **Window: nudge…** offsets in Settings, and use **Print Alignment Test**
+  (which draws the window outlines) to check placement. Defaults target the OSDS
+  3-7/8 × 9-1/4" payroll envelope with the check inserted flush to the bottom.
+
 ## Writing a check (Write a Check tab)
 
 Enter check number (auto-fills/advances), date (defaults to today), payee,
