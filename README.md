@@ -104,8 +104,12 @@ check printer with MICR toner. Then:
 
 The **Printer** selection is remembered between runs.
 
-Each printed check is logged to the register CSV and the next check number
-advances automatically.
+After either print button, you're asked **"Did that print OK?"**:
+
+- **Yes** — record it to the register CSV, advance to the next check number, and
+  clear the payee/amount/memo for the next check.
+- **No** — keep the check number and every field unchanged so you can reprint
+  the same check.
 
 ## Aligning to your stock
 

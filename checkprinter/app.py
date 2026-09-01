@@ -222,38 +222,51 @@ class CheckPrinterApp:
         self.cfg["printer"] = self.w_printer.get()
         cfgmod.save(self.cfg)
 
+    def _clear_check_fields(self):
+        """Clear payee, amount and memo for the next check (keep date)."""
+        self.w_payee.set("")
+        self.w_amount.set("")
+        self.w_memo.set("")
+
+    def _confirm_printed(self, check):
+        """Ask whether the check printed OK; only then log/advance/clear.
+
+        No: leave the check number and all fields unchanged so it can be
+        reprinted with the same number.
+        """
+        if messagebox.askyesno(
+                "Did that print OK?",
+                f"Did check #{check['number']} to "
+                f"{check['payee']} for ${check['amount']:,.2f} print correctly?\n\n"
+                "Yes  –  record it, advance to the next check number, and clear "
+                "the check.\n"
+                "No  –  keep everything as-is so you can reprint the same check."):
+            self._log_register(check)
+            self._advance_number(check["number"])
+            self._clear_check_fields()
+
     def generate_and_open(self):
         check = self._collect_check()
         if not check:
             return
         path = self._render(check)
-        self._log_register(check)
-        self._advance_number(check["number"])
         subprocess.run(["open", path])
+        self._confirm_printed(check)
 
     def generate_and_print(self):
         check = self._collect_check()
         if not check:
             return
         printer = self.w_printer.get().strip()
-        target = printer or "the default printer"
-        if not messagebox.askyesno(
-                "Print check",
-                f"Send check #{check['number']} for ${check['amount']:,.2f} to "
-                f"{target}?\n\nMake sure blank check stock is loaded and the "
-                "printer is set to Actual Size (100%)."):
-            return
+        self._save_printer()
         path = self._render(check)
-        self._log_register(check)
-        self._advance_number(check["number"])
         # -o fit-to-page is intentionally NOT used, to preserve exact placement.
         cmd = ["lpr"]
         if printer:
             cmd += ["-P", printer]
         cmd.append(path)
         subprocess.run(cmd)
-        messagebox.showinfo("Sent to printer",
-                            f"Check #{check['number']} sent to {target}.")
+        self._confirm_printed(check)
 
     def print_alignment(self):
         cfgmod.ensure_dirs()
