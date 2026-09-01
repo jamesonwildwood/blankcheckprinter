@@ -96,11 +96,24 @@ class CheckPrinterApp:
         self.words_lbl.grid(row=r, column=1, columnspan=2, sticky="w", **pad)
         r += 1
 
+        # Printer selector
+        ttk.Label(f, text="Printer").grid(row=r, column=0, sticky="e", **pad)
+        printers, default = self._list_printers()
+        self.w_printer = tk.StringVar(value=default or (printers[0] if printers else ""))
+        pr = ttk.Frame(f)
+        pr.grid(row=r, column=1, columnspan=2, sticky="w", **pad)
+        self.printer_cb = ttk.Combobox(pr, textvariable=self.w_printer,
+                                       values=printers, state="readonly", width=42)
+        self.printer_cb.pack(side="left")
+        ttk.Button(pr, text="↻", width=3, command=self._refresh_printers).pack(
+            side="left", padx=4)
+        r += 1
+
         btns = ttk.Frame(f)
         btns.grid(row=r, column=0, columnspan=3, sticky="w", padx=8, pady=16)
         ttk.Button(btns, text="Generate & Open in Preview",
                    command=self.generate_and_open).pack(side="left", padx=4)
-        ttk.Button(btns, text="Print to default printer",
+        ttk.Button(btns, text="Print to selected printer",
                    command=self.generate_and_print).pack(side="left", padx=4)
         ttk.Button(btns, text="Print Alignment Test",
                    command=self.print_alignment).pack(side="left", padx=4)
@@ -175,6 +188,33 @@ class CheckPrinterApp:
         if "next_check_number" in self.vars:
             self.vars["next_check_number"].set(str(self.cfg["next_check_number"]))
 
+    def _list_printers(self):
+        """Return (printer_names, default_name) from CUPS via lpstat."""
+        printers = []
+        default = None
+        try:
+            out = subprocess.run(["lpstat", "-p"], capture_output=True,
+                                 text=True).stdout
+            for line in out.splitlines():
+                if line.startswith("printer "):
+                    printers.append(line.split()[1])
+        except Exception:
+            pass
+        try:
+            d = subprocess.run(["lpstat", "-d"], capture_output=True,
+                               text=True).stdout.strip()
+            if ":" in d:
+                default = d.split(":", 1)[1].strip()
+        except Exception:
+            pass
+        return printers, default
+
+    def _refresh_printers(self):
+        printers, default = self._list_printers()
+        self.printer_cb["values"] = printers
+        if self.w_printer.get() not in printers:
+            self.w_printer.set(default or (printers[0] if printers else ""))
+
     def generate_and_open(self):
         check = self._collect_check()
         if not check:
@@ -188,19 +228,25 @@ class CheckPrinterApp:
         check = self._collect_check()
         if not check:
             return
+        printer = self.w_printer.get().strip()
+        target = printer or "the default printer"
         if not messagebox.askyesno(
                 "Print check",
                 f"Send check #{check['number']} for ${check['amount']:,.2f} to "
-                "your default printer?\n\nMake sure blank check stock is loaded "
-                "and the printer is set to Actual Size (100%)."):
+                f"{target}?\n\nMake sure blank check stock is loaded and the "
+                "printer is set to Actual Size (100%)."):
             return
         path = self._render(check)
         self._log_register(check)
         self._advance_number(check["number"])
         # -o fit-to-page is intentionally NOT used, to preserve exact placement.
-        subprocess.run(["lpr", path])
+        cmd = ["lpr"]
+        if printer:
+            cmd += ["-P", printer]
+        cmd.append(path)
+        subprocess.run(cmd)
         messagebox.showinfo("Sent to printer",
-                            f"Check #{check['number']} sent to the default printer.")
+                            f"Check #{check['number']} sent to {target}.")
 
     def print_alignment(self):
         cfgmod.ensure_dirs()

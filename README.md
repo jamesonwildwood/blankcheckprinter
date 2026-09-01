@@ -76,12 +76,14 @@ Fill in and **Save Settings**:
 ## Writing a check (Write a Check tab)
 
 Enter check number (auto-fills/advances), date (defaults to today), payee,
-amount, and memo. The amount-in-words fills in automatically. Then:
+amount, and memo. The amount-in-words fills in automatically. Pick the target
+in the **Printer** dropdown (↻ refreshes the list) — point it at your dedicated
+check printer with MICR toner. Then:
 
 - **Generate & Open in Preview** — opens the PDF; print from Preview at Actual
-  Size. (Recommended.)
-- **Print to default printer** — sends straight to your default printer via
-  `lpr` (no scaling applied).
+  Size, choosing the printer in the Print dialog's Printer menu. (Recommended.)
+- **Print to selected printer** — sends straight to the printer chosen in the
+  dropdown via `lpr` (no scaling applied).
 - **Print Alignment Test** — a 1-inch grid + perforation guides + MICR clear
   band, to dial in placement on your stock before printing checks.
 
