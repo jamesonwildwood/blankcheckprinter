@@ -40,8 +40,10 @@ DEFAULTS = {
     "offset_x": 0.0,            # global registration nudge, right = +
     "offset_y": 0.0,            # global registration nudge, up = +
     "micr_baseline": 0.3125,    # MICR baseline height above page bottom
-    "micr_right_margin": 0.3125,  # gap from right paper edge to end of MICR
-    "draw_border": True,        # draw a border around the check
+    "micr_align": "left",       # MICR horizontal anchor: left | center | right
+    "micr_left_margin": 1.0,    # gap from left paper edge to start of MICR (left align)
+    "micr_right_margin": 0.3125,  # gap from right paper edge to end of MICR (right align)
+    "draw_border": True,        # draw a border around the check (open top)
     "draw_perf_guides": False,  # draw dashed perforation guide lines
     "signature_text": "AUTHORIZED SIGNATURE",
 }

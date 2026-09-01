@@ -30,10 +30,11 @@ LAYOUT_FIELDS = [
     ("next_check_number", "Next check number", "int"),
     ("check_band_height", "Check height at page bottom (in)", "float"),
     ("num_stubs", "Record stubs above check (0-2)", "int"),
-    ("offset_x", "Registration nudge X (in, right +)", "float"),
-    ("offset_y", "Registration nudge Y (in, up +)", "float"),
+    ("offset_x", "Nudge everything X (in, right +)", "float"),
+    ("offset_y", "Nudge everything Y (in, up +; raise if bottom clips)", "float"),
     ("micr_baseline", "MICR baseline from bottom (in)", "float"),
-    ("micr_right_margin", "MICR right margin (in)", "float"),
+    ("micr_left_margin", "MICR left margin (in, for Left position)", "float"),
+    ("micr_right_margin", "MICR right margin (in, for Right position)", "float"),
     ("signature_text", "Signature line label", "str"),
     ("draw_border", "Draw border around check", "bool"),
     ("draw_perf_guides", "Draw dashed perforation guides", "bool"),
@@ -270,6 +271,17 @@ class CheckPrinterApp:
             row=4, column=1, sticky="w", padx=8, pady=3)
         ttk.Button(micr, text="Choose…", command=self._choose_font).grid(
             row=4, column=2, padx=4)
+
+        ttk.Label(micr, text="MICR position").grid(row=5, column=0, sticky="e",
+                                                   padx=8, pady=3)
+        self.vars["micr_align"] = tk.StringVar(value=self.cfg.get("micr_align", "left"))
+        ttk.Combobox(micr, textvariable=self.vars["micr_align"], state="readonly",
+                     values=["left", "center", "right"], width=12).grid(
+            row=5, column=1, sticky="w", padx=8, pady=3)
+        ttk.Label(micr, text="Left = anchor to 'MICR left margin'; adjust that + "
+                             "Nudge X in Layout to line up the routing number.",
+                  foreground="#555").grid(row=6, column=0, columnspan=2, sticky="w",
+                                          padx=8, pady=2)
 
         add_fields(section("Layout & Registration"), LAYOUT_FIELDS)
 

@@ -19,7 +19,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 
-from .micr import draw_micr_line, expand_template
+from .micr import draw_micr_line, expand_template, micr_width
 
 PAGE_W, PAGE_H = letter                 # 612 x 792 pt (8.5 x 11 in)
 LM = 0.40 * inch                        # left margin inside the check
@@ -46,15 +46,30 @@ def _fmt_amount(amount):
     return f"{amount:,.2f}"
 
 
+def _micr_right_x(cfg, text):
+    """Right-edge x for the MICR line given the configured horizontal anchor."""
+    align = cfg.get("micr_align", "right")
+    total = micr_width(text)
+    if align == "left":
+        return cfg.get("micr_left_margin", 1.0) * inch + total
+    if align == "center":
+        return (PAGE_W + total) / 2.0
+    return PAGE_W - cfg.get("micr_right_margin", 0.3125) * inch
+
+
 def draw_negotiable_check(c, cfg, check):
     """Draw the actual check in the bottom band (bottom edge at y = 0)."""
     bh = cfg["check_band_height"] * inch
 
-    # Optional border around the check.
+    # Optional border around the check. The top edge is intentionally omitted
+    # because the stock is perforated there (drawing it looks like a stray line).
     if cfg.get("draw_border"):
         c.setLineWidth(1.0)
-        c.rect(0.14 * inch, 0.14 * inch, PAGE_W - 0.28 * inch, bh - 0.28 * inch,
-               stroke=1, fill=0)
+        x0, x1 = 0.14 * inch, PAGE_W - 0.14 * inch
+        y0, y1 = 0.14 * inch, bh - 0.14 * inch
+        c.line(x0, y0, x1, y0)   # bottom
+        c.line(x0, y0, x0, y1)   # left
+        c.line(x1, y0, x1, y1)   # right
 
     # --- Company (maker) block, top-left ---
     y = bh - 0.42 * inch
@@ -138,7 +153,7 @@ def draw_negotiable_check(c, cfg, check):
                            cfg.get("account", ""), check["number"])
     draw_micr_line(
         c, text,
-        right_x=PAGE_W - cfg["micr_right_margin"] * inch,
+        right_x=_micr_right_x(cfg, text),
         baseline_y=cfg["micr_baseline"] * inch,
         font_path=cfg.get("font_path") or None,
     )
@@ -243,10 +258,12 @@ def build_alignment_pdf(cfg, out_path):
     # Sample MICR line so you can see where it lands
     sample = expand_template(cfg["micr_template"], cfg.get("routing", "") or "123456789",
                              cfg.get("account", "") or "0001234567", cfg["next_check_number"])
-    draw_micr_line(c, sample,
-                   right_x=PAGE_W - cfg["micr_right_margin"] * inch,
-                   baseline_y=cfg["micr_baseline"] * inch,
-                   font_path=cfg.get("font_path") or None)
+    left = draw_micr_line(c, sample,
+                          right_x=_micr_right_x(cfg, sample),
+                          baseline_y=cfg["micr_baseline"] * inch,
+                          font_path=cfg.get("font_path") or None)
+    _label(c, left, cfg["micr_baseline"] * inch - 0.16 * inch,
+           f'MICR starts {left / inch:.2f}" from left edge', size=6)
 
     _label(c, LM, PAGE_H - 0.3 * inch,
            "ALIGNMENT TEST — 1in grid. Check band bottom = page bottom. "
