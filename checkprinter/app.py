@@ -1,0 +1,322 @@
+"""CheckPrinter desktop app (Tkinter) - write and print checks on blank stock."""
+
+import csv
+import datetime
+import os
+import subprocess
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
+
+from . import config as cfgmod
+from .layout import build_alignment_pdf, build_check_pdf
+from .numwords import amount_to_words
+
+# (config key, label, kind) for the Settings form. kind: str/int/float/bool/multiline
+COMPANY_FIELDS = [
+    ("company_name", "Company name", "str"),
+    ("company_line2", "Line 2 (tagline, optional)", "str"),
+    ("company_address", "Street address", "str"),
+    ("company_citystate", "City, State ZIP", "str"),
+    ("company_phone", "Phone", "str"),
+]
+BANK_FIELDS = [
+    ("bank_name", "Bank name", "str"),
+    ("bank_citystate", "Bank city, state", "str"),
+    ("routing", "Routing number (9 digits)", "str"),
+    ("account", "Account number", "str"),
+    ("fraction", "Transit fraction (e.g. 66-1234/531)", "str"),
+]
+LAYOUT_FIELDS = [
+    ("next_check_number", "Next check number", "int"),
+    ("check_band_height", "Check height at page bottom (in)", "float"),
+    ("num_stubs", "Record stubs above check (0-2)", "int"),
+    ("offset_x", "Registration nudge X (in, right +)", "float"),
+    ("offset_y", "Registration nudge Y (in, up +)", "float"),
+    ("micr_baseline", "MICR baseline from bottom (in)", "float"),
+    ("micr_right_margin", "MICR right margin (in)", "float"),
+    ("signature_text", "Signature line label", "str"),
+    ("draw_border", "Draw border around check", "bool"),
+    ("draw_perf_guides", "Draw dashed perforation guides", "bool"),
+]
+
+
+class CheckPrinterApp:
+    def __init__(self, root):
+        self.root = root
+        self.cfg = cfgmod.load()
+        cfgmod.ensure_dirs()
+        self.vars = {}
+
+        root.title("CheckPrinter")
+        root.geometry("760x680")
+
+        nb = ttk.Notebook(root)
+        nb.pack(fill="both", expand=True, padx=8, pady=8)
+        self.write_tab = ttk.Frame(nb)
+        self.settings_tab = ttk.Frame(nb)
+        nb.add(self.write_tab, text="  Write a Check  ")
+        nb.add(self.settings_tab, text="  Settings  ")
+
+        self._build_write_tab()
+        self._build_settings_tab()
+
+    # ---------- Write a Check ----------
+    def _build_write_tab(self):
+        f = self.write_tab
+        pad = {"padx": 8, "pady": 5}
+        today = datetime.date.today().strftime("%m/%d/%Y")
+
+        ttk.Label(f, text="Write a Check", font=("Helvetica", 15, "bold")).grid(
+            row=0, column=0, columnspan=3, sticky="w", **pad)
+
+        self.w_number = tk.StringVar(value=str(self.cfg["next_check_number"]))
+        self.w_date = tk.StringVar(value=today)
+        self.w_payee = tk.StringVar()
+        self.w_amount = tk.StringVar()
+        self.w_memo = tk.StringVar()
+
+        rows = [
+            ("Check number", self.w_number),
+            ("Date", self.w_date),
+            ("Pay to the order of", self.w_payee),
+            ("Amount ($)", self.w_amount),
+            ("Memo", self.w_memo),
+        ]
+        r = 1
+        for label, var in rows:
+            ttk.Label(f, text=label).grid(row=r, column=0, sticky="e", **pad)
+            e = ttk.Entry(f, textvariable=var, width=48)
+            e.grid(row=r, column=1, columnspan=2, sticky="w", **pad)
+            r += 1
+
+        self.w_amount.trace_add("write", lambda *a: self._update_words())
+        self.words_lbl = ttk.Label(f, text="", foreground="#444",
+                                   font=("Helvetica", 11, "italic"))
+        self.words_lbl.grid(row=r, column=1, columnspan=2, sticky="w", **pad)
+        r += 1
+
+        btns = ttk.Frame(f)
+        btns.grid(row=r, column=0, columnspan=3, sticky="w", padx=8, pady=16)
+        ttk.Button(btns, text="Generate & Open in Preview",
+                   command=self.generate_and_open).pack(side="left", padx=4)
+        ttk.Button(btns, text="Print to default printer",
+                   command=self.generate_and_print).pack(side="left", padx=4)
+        ttk.Button(btns, text="Print Alignment Test",
+                   command=self.print_alignment).pack(side="left", padx=4)
+
+        note = ("When printing, choose Actual Size / Scale 100% (never "
+                "'Fit to Page') so everything lands in the right spot.\n"
+                "Use MICR magnetic toner and run one test check past your bank "
+                "before printing a batch.")
+        ttk.Label(f, text=note, foreground="#a00", justify="left").grid(
+            row=r + 1, column=0, columnspan=3, sticky="w", padx=8)
+
+    def _update_words(self):
+        try:
+            amt = self._parse_amount()
+            self.words_lbl.config(text=amount_to_words(amt) + " DOLLARS")
+        except Exception:
+            self.words_lbl.config(text="")
+
+    def _parse_amount(self):
+        raw = self.w_amount.get().replace("$", "").replace(",", "").strip()
+        return float(raw)
+
+    def _collect_check(self):
+        try:
+            amt = self._parse_amount()
+        except ValueError:
+            messagebox.showerror("Invalid amount",
+                                 "Enter a dollar amount, e.g. 4287.19")
+            return None
+        if amt <= 0:
+            messagebox.showerror("Invalid amount", "Amount must be greater than 0.")
+            return None
+        if not self.w_payee.get().strip():
+            messagebox.showerror("Missing payee", "Enter who the check is paid to.")
+            return None
+        try:
+            number = int(self.w_number.get())
+        except ValueError:
+            messagebox.showerror("Invalid number", "Check number must be a whole number.")
+            return None
+        return {
+            "number": number,
+            "date": self.w_date.get().strip(),
+            "payee": self.w_payee.get().strip(),
+            "amount": amt,
+            "words": amount_to_words(amt),
+            "memo": self.w_memo.get().strip(),
+        }
+
+    def _render(self, check):
+        cfgmod.ensure_dirs()
+        fname = f"check_{check['number']}.pdf"
+        path = os.path.join(cfgmod.OUTPUT_DIR, fname)
+        build_check_pdf(self.cfg, check, path)
+        return path
+
+    def _log_register(self, check):
+        new = not os.path.exists(cfgmod.REGISTER_PATH)
+        with open(cfgmod.REGISTER_PATH, "a", newline="") as f:
+            w = csv.writer(f)
+            if new:
+                w.writerow(["printed_at", "check_number", "date", "payee",
+                            "amount", "memo"])
+            w.writerow([datetime.datetime.now().isoformat(timespec="seconds"),
+                        check["number"], check["date"], check["payee"],
+                        f"{check['amount']:.2f}", check["memo"]])
+
+    def _advance_number(self, number):
+        self.cfg["next_check_number"] = number + 1
+        cfgmod.save(self.cfg)
+        self.w_number.set(str(self.cfg["next_check_number"]))
+        if "next_check_number" in self.vars:
+            self.vars["next_check_number"].set(str(self.cfg["next_check_number"]))
+
+    def generate_and_open(self):
+        check = self._collect_check()
+        if not check:
+            return
+        path = self._render(check)
+        self._log_register(check)
+        self._advance_number(check["number"])
+        subprocess.run(["open", path])
+
+    def generate_and_print(self):
+        check = self._collect_check()
+        if not check:
+            return
+        if not messagebox.askyesno(
+                "Print check",
+                f"Send check #{check['number']} for ${check['amount']:,.2f} to "
+                "your default printer?\n\nMake sure blank check stock is loaded "
+                "and the printer is set to Actual Size (100%)."):
+            return
+        path = self._render(check)
+        self._log_register(check)
+        self._advance_number(check["number"])
+        # -o fit-to-page is intentionally NOT used, to preserve exact placement.
+        subprocess.run(["lpr", path])
+        messagebox.showinfo("Sent to printer",
+                            f"Check #{check['number']} sent to the default printer.")
+
+    def print_alignment(self):
+        cfgmod.ensure_dirs()
+        path = os.path.join(cfgmod.OUTPUT_DIR, "alignment_test.pdf")
+        build_alignment_pdf(self.cfg, path)
+        subprocess.run(["open", path])
+
+    # ---------- Settings ----------
+    def _build_settings_tab(self):
+        # scrollable container
+        canvas = tk.Canvas(self.settings_tab, highlightthickness=0)
+        sb = ttk.Scrollbar(self.settings_tab, orient="vertical", command=canvas.yview)
+        inner = ttk.Frame(canvas)
+        inner.bind("<Configure>",
+                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=sb.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        sb.pack(side="right", fill="y")
+
+        def section(title):
+            lf = ttk.LabelFrame(inner, text=title)
+            lf.pack(fill="x", expand=True, padx=10, pady=6)
+            return lf
+
+        def add_fields(parent, fields):
+            for i, (key, label, kind) in enumerate(fields):
+                if kind == "bool":
+                    var = tk.BooleanVar(value=bool(self.cfg.get(key)))
+                    ttk.Checkbutton(parent, text=label, variable=var).grid(
+                        row=i, column=0, columnspan=2, sticky="w", padx=8, pady=3)
+                else:
+                    var = tk.StringVar(value=str(self.cfg.get(key, "")))
+                    ttk.Label(parent, text=label).grid(
+                        row=i, column=0, sticky="e", padx=8, pady=3)
+                    ttk.Entry(parent, textvariable=var, width=42).grid(
+                        row=i, column=1, sticky="w", padx=8, pady=3)
+                self.vars[key] = var
+
+        add_fields(section("Your Company"), COMPANY_FIELDS)
+        add_fields(section("Bank / Account"), BANK_FIELDS)
+
+        # MICR section with presets + font chooser
+        micr = section("MICR Line (bottom number line)")
+        ttk.Label(micr, text="Template").grid(row=0, column=0, sticky="e", padx=8, pady=3)
+        self.vars["micr_template"] = tk.StringVar(value=self.cfg["micr_template"])
+        ttk.Entry(micr, textvariable=self.vars["micr_template"], width=42).grid(
+            row=0, column=1, sticky="w", padx=8, pady=3)
+        pf = ttk.Frame(micr)
+        pf.grid(row=1, column=1, sticky="w", padx=8)
+        ttk.Button(pf, text="Business preset",
+                   command=lambda: self.vars["micr_template"].set(cfgmod.MICR_PRESET_BUSINESS)
+                   ).pack(side="left", padx=2)
+        ttk.Button(pf, text="Personal preset",
+                   command=lambda: self.vars["micr_template"].set(cfgmod.MICR_PRESET_PERSONAL)
+                   ).pack(side="left", padx=2)
+        ttk.Label(micr, text="{r}=routing  {a}=account  {c}=check#   "
+                             "A=Transit B=Amount C=On-Us D=Dash",
+                  foreground="#555").grid(row=2, column=0, columnspan=2, sticky="w",
+                                          padx=8, pady=2)
+        ttk.Label(micr, text="Match your bank's MICR spec sheet EXACTLY.",
+                  foreground="#a00").grid(row=3, column=0, columnspan=2, sticky="w",
+                                          padx=8, pady=2)
+        ttk.Label(micr, text="E-13B font (optional)").grid(row=4, column=0, sticky="e",
+                                                           padx=8, pady=3)
+        self.vars["font_path"] = tk.StringVar(value=self.cfg.get("font_path", ""))
+        ttk.Entry(micr, textvariable=self.vars["font_path"], width=34).grid(
+            row=4, column=1, sticky="w", padx=8, pady=3)
+        ttk.Button(micr, text="Choose…", command=self._choose_font).grid(
+            row=4, column=2, padx=4)
+
+        add_fields(section("Layout & Registration"), LAYOUT_FIELDS)
+
+        save = ttk.Frame(inner)
+        save.pack(fill="x", pady=12)
+        ttk.Button(save, text="Save Settings", command=self.save_settings).pack(
+            side="left", padx=12)
+        ttk.Label(save, text=f"Stored in {cfgmod.CONFIG_PATH}",
+                  foreground="#555").pack(side="left")
+
+    def _choose_font(self):
+        p = filedialog.askopenfilename(title="Choose an E-13B TrueType font",
+                                       filetypes=[("TrueType font", "*.ttf")])
+        if p:
+            self.vars["font_path"].set(p)
+
+    def save_settings(self):
+        allfields = COMPANY_FIELDS + BANK_FIELDS + LAYOUT_FIELDS
+        kinds = {k: kind for k, _, kind in allfields}
+        kinds["micr_template"] = "str"
+        kinds["font_path"] = "str"
+        for key, var in self.vars.items():
+            kind = kinds.get(key, "str")
+            val = var.get()
+            try:
+                if kind == "int":
+                    self.cfg[key] = int(val)
+                elif kind == "float":
+                    self.cfg[key] = float(val)
+                elif kind == "bool":
+                    self.cfg[key] = bool(val)
+                else:
+                    self.cfg[key] = val
+            except ValueError:
+                messagebox.showerror("Invalid value",
+                                     f"'{val}' is not valid for {key}.")
+                return
+        cfgmod.save(self.cfg)
+        self.w_number.set(str(self.cfg["next_check_number"]))
+        messagebox.showinfo("Saved", "Settings saved.")
+
+
+def main():
+    root = tk.Tk()
+    CheckPrinterApp(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()

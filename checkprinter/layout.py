@@ -1,0 +1,257 @@
+"""Draw a business check (check-on-the-bottom format) to a PDF for blank stock.
+
+Page (US Letter, 8.5 x 11 in), origin at bottom-left:
+
+    +----------------------------------+  y = 11.0
+    |            record stub 2         |
+    +----------------------------------+  y = 2 * band_height
+    |            record stub 1         |
+    +----------------------------------+  y = band_height
+    |     NEGOTIABLE CHECK (printed)   |
+    |     ...            MICR line     |  <- MICR in the 5/8" clear band
+    +----------------------------------+  y = 0
+
+Everything is drawn by us because the stock is truly blank. A global
+(offset_x, offset_y) nudge lets you register the print to your paper.
+"""
+
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas
+
+from .micr import draw_micr_line, expand_template
+
+PAGE_W, PAGE_H = letter                 # 612 x 792 pt (8.5 x 11 in)
+LM = 0.40 * inch                        # left margin inside the check
+RX = PAGE_W - 0.40 * inch               # right content edge
+CLEAR_BAND = 0.625 * inch               # MICR clear band; keep other ink above
+
+
+def _line(c, x1, x2, y, width=0.7):
+    c.setLineWidth(width)
+    c.line(x1, y, x2, y)
+
+
+def _label(c, x, y, text, size=6, align="left"):
+    c.setFont("Helvetica", size)
+    if align == "right":
+        c.drawRightString(x, y, text)
+    elif align == "center":
+        c.drawCentredString(x, y, text)
+    else:
+        c.drawString(x, y, text)
+
+
+def _fmt_amount(amount):
+    return f"{amount:,.2f}"
+
+
+def draw_negotiable_check(c, cfg, check):
+    """Draw the actual check in the bottom band (bottom edge at y = 0)."""
+    bh = cfg["check_band_height"] * inch
+
+    # Optional border around the check.
+    if cfg.get("draw_border"):
+        c.setLineWidth(1.0)
+        c.rect(0.14 * inch, 0.14 * inch, PAGE_W - 0.28 * inch, bh - 0.28 * inch,
+               stroke=1, fill=0)
+
+    # --- Company (maker) block, top-left ---
+    y = bh - 0.42 * inch
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(LM, y, cfg.get("company_name", ""))
+    y -= 0.155 * inch
+    for key, size in (("company_line2", 8), ("company_address", 8),
+                      ("company_citystate", 8), ("company_phone", 8)):
+        val = cfg.get(key, "")
+        if val:
+            c.setFont("Helvetica", size)
+            c.drawString(LM, y, val)
+            y -= 0.135 * inch
+
+    # --- Check number + fraction, top-right ---
+    c.setFont("Helvetica", 8)
+    c.drawRightString(RX - 0.62 * inch, bh - 0.40 * inch, "No.")
+    c.setFont("Helvetica-Bold", 13)
+    c.drawRightString(RX, bh - 0.40 * inch, str(check["number"]))
+    if cfg.get("fraction"):
+        _label(c, RX, bh - 0.62 * inch, cfg["fraction"], size=8, align="right")
+
+    # --- Date, mid-right ---
+    date_y = bh - 1.02 * inch
+    _line(c, RX - 1.75 * inch, RX, date_y)
+    c.setFont("Helvetica", 10)
+    c.drawString(RX - 1.65 * inch, date_y + 0.045 * inch, check.get("date", ""))
+    _label(c, RX - 0.875 * inch, date_y - 0.135 * inch, "DATE", size=6,
+           align="center")
+
+    # --- Pay to the order of ---
+    pay_y = bh - 1.55 * inch
+    _label(c, LM, pay_y + 0.10 * inch, "PAY TO THE", size=6)
+    _label(c, LM, pay_y + 0.02 * inch, "ORDER OF", size=6)
+    _line(c, LM + 0.72 * inch, RX - 1.55 * inch, pay_y)
+    c.setFont("Helvetica", 11)
+    c.drawString(LM + 0.82 * inch, pay_y + 0.045 * inch, check.get("payee", ""))
+
+    # --- Amount box (numeric) ---
+    box_x0, box_x1 = RX - 1.45 * inch, RX
+    box_y0, box_y1 = pay_y - 0.10 * inch, pay_y + 0.20 * inch
+    c.setFont("Helvetica-Bold", 12)
+    c.drawRightString(box_x0 - 0.06 * inch, pay_y + 0.02 * inch, "$")
+    c.setLineWidth(0.9)
+    c.rect(box_x0, box_y0, box_x1 - box_x0, box_y1 - box_y0, stroke=1, fill=0)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawRightString(box_x1 - 0.06 * inch, box_y0 + 0.075 * inch,
+                      "**" + _fmt_amount(check["amount"]))
+
+    # --- Legal / written-amount line ("... DOLLARS") ---
+    words_y = bh - 2.02 * inch
+    _line(c, LM, RX - 0.80 * inch, words_y)
+    c.setFont("Helvetica", 10.5)
+    c.drawString(LM + 0.04 * inch, words_y + 0.045 * inch, check.get("words", ""))
+    c.setFont("Helvetica-Bold", 9)
+    c.drawRightString(RX, words_y + 0.045 * inch, "DOLLARS")
+
+    # --- Bank block (anchored above the memo/signature row) ---
+    bank_y = 1.24 * inch
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(LM, bank_y, cfg.get("bank_name", ""))
+    if cfg.get("bank_citystate"):
+        c.setFont("Helvetica", 8)
+        c.drawString(LM, bank_y - 0.13 * inch, cfg["bank_citystate"])
+
+    # --- Memo (left) and signature (right); anchored to the page bottom ---
+    memo_y = 0.74 * inch
+    _label(c, LM, memo_y, "MEMO", size=6)
+    _line(c, LM + 0.50 * inch, LM + 2.9 * inch, memo_y)
+    c.setFont("Helvetica", 9)
+    c.drawString(LM + 0.58 * inch, memo_y + 0.04 * inch, check.get("memo", ""))
+
+    sig_y = 0.92 * inch
+    _line(c, RX - 2.7 * inch, RX, sig_y)
+    _label(c, (RX - 2.7 * inch + RX) / 2.0, sig_y - 0.145 * inch,
+           cfg.get("signature_text", "AUTHORIZED SIGNATURE"), size=6,
+           align="center")
+
+    # --- MICR line (clear band) ---
+    text = expand_template(cfg["micr_template"], cfg.get("routing", ""),
+                           cfg.get("account", ""), check["number"])
+    draw_micr_line(
+        c, text,
+        right_x=PAGE_W - cfg["micr_right_margin"] * inch,
+        baseline_y=cfg["micr_baseline"] * inch,
+        font_path=cfg.get("font_path") or None,
+    )
+
+
+def draw_stub(c, cfg, check, y_bottom, height):
+    """Draw a compact record stub with its bottom edge at y_bottom."""
+    top = y_bottom + height
+    c.setLineWidth(0.5)
+    # separator line at the top of the stub (near the perforation)
+    _line(c, LM, RX, top - 0.05 * inch, width=0.4)
+
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(LM, top - 0.35 * inch, cfg.get("company_name", ""))
+    c.setFont("Helvetica", 8)
+    c.drawRightString(RX, top - 0.35 * inch, f"Check No. {check['number']}")
+    c.drawRightString(RX, top - 0.52 * inch, f"Date  {check.get('date', '')}")
+
+    rows = [
+        ("Pay to", check.get("payee", "")),
+        ("Amount", "$ " + _fmt_amount(check["amount"])),
+        ("", check.get("words", "")),
+        ("Memo", check.get("memo", "")),
+    ]
+    ry = top - 0.85 * inch
+    for label, value in rows:
+        if label:
+            c.setFont("Helvetica-Bold", 8)
+            c.drawString(LM, ry, label + ":")
+        c.setFont("Helvetica", 8.5)
+        c.drawString(LM + 0.75 * inch, ry, value)
+        ry -= 0.24 * inch
+
+
+def _draw_perf_guides(c, cfg):
+    bh = cfg["check_band_height"] * inch
+    c.setDash(3, 3)
+    c.setLineWidth(0.4)
+    for i in range(1, cfg["num_stubs"] + 1):
+        y = i * bh
+        if y < PAGE_H:
+            c.line(0, y, PAGE_W, y)
+    c.setDash()
+
+
+def build_check_pdf(cfg, check, out_path):
+    """Render a full page (check + stubs) to out_path."""
+    c = canvas.Canvas(out_path, pagesize=letter)
+    c.translate(cfg.get("offset_x", 0.0) * inch, cfg.get("offset_y", 0.0) * inch)
+
+    if cfg.get("draw_perf_guides"):
+        _draw_perf_guides(c, cfg)
+
+    bh = cfg["check_band_height"] * inch
+    for i in range(cfg.get("num_stubs", 0)):
+        draw_stub(c, cfg, check, y_bottom=(i + 1) * bh, height=bh)
+
+    draw_negotiable_check(c, cfg, check)
+    c.showPage()
+    c.save()
+    return out_path
+
+
+def build_alignment_pdf(cfg, out_path):
+    """A test page: perforation guides, a 1-inch grid, and the MICR clear band.
+
+    Print this on a blank sheet (or your stock) and hold it to the light against
+    your check stock to check registration before printing real checks.
+    """
+    c = canvas.Canvas(out_path, pagesize=letter)
+    c.translate(cfg.get("offset_x", 0.0) * inch, cfg.get("offset_y", 0.0) * inch)
+
+    # 1-inch grid
+    c.setLineWidth(0.25)
+    c.setStrokeColorRGB(0.7, 0.7, 0.7)
+    x = 0
+    while x <= PAGE_W:
+        c.line(x, 0, x, PAGE_H)
+        x += inch
+    y = 0
+    while y <= PAGE_H:
+        c.line(0, y, PAGE_W, y)
+        y += inch
+    c.setStrokeColorRGB(0, 0, 0)
+
+    # Perforation guides + band labels
+    bh = cfg["check_band_height"] * inch
+    c.setDash(4, 3)
+    for i in range(1, cfg["num_stubs"] + 1):
+        yy = i * bh
+        if yy < PAGE_H:
+            c.line(0, yy, PAGE_W, yy)
+    c.setDash()
+
+    # MICR clear band
+    c.setFillColorRGB(0.9, 0.95, 1.0)
+    c.rect(0, 0, PAGE_W, CLEAR_BAND, stroke=0, fill=1)
+    c.setFillColorRGB(0, 0, 0)
+    _label(c, LM, CLEAR_BAND - 0.18 * inch,
+           'MICR clear band (5/8" from bottom) — keep clear except MICR', size=7)
+
+    # Sample MICR line so you can see where it lands
+    sample = expand_template(cfg["micr_template"], cfg.get("routing", "") or "123456789",
+                             cfg.get("account", "") or "0001234567", cfg["next_check_number"])
+    draw_micr_line(c, sample,
+                   right_x=PAGE_W - cfg["micr_right_margin"] * inch,
+                   baseline_y=cfg["micr_baseline"] * inch,
+                   font_path=cfg.get("font_path") or None)
+
+    _label(c, LM, PAGE_H - 0.3 * inch,
+           "ALIGNMENT TEST — 1in grid. Check band bottom = page bottom. "
+           f"Band height = {cfg['check_band_height']}in, stubs = {cfg['num_stubs']}.",
+           size=8)
+    c.showPage()
+    c.save()
+    return out_path
