@@ -55,6 +55,20 @@ brew install python-tk@3.14     # Tk toolkit for the GUI
 ./.venv/bin/python -m checkprinter
 ```
 
+### Make it an app icon
+
+To get a real double-clickable **CheckPrinter.app** with an icon:
+
+```bash
+./build_app.sh
+```
+
+This creates `CheckPrinter.app` in the project folder. Double-click it, or drag
+it into the **Dock** or **Applications** (the app launches this project's local
+environment, so keep the project folder where it is; re-run `./build_app.sh` if
+you move it). The app is unsigned but built locally, so Gatekeeper won't block
+it. First launch finishes any one-time setup automatically.
+
 ---
 
 ## First-time setup (Settings tab)

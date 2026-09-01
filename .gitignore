@@ -3,3 +3,9 @@ __pycache__/
 *.pyc
 scratch_out/
 fonts/*.ttf
+
+# Build artifacts (regenerate with ./build_app.sh)
+CheckPrinter.app/
+CheckPrinter.icns
+packaging/CheckPrinter.iconset/
+packaging/icon_preview.png
