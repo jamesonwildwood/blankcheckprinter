@@ -97,12 +97,15 @@ class CheckPrinterApp:
         # Printer selector
         ttk.Label(f, text="Printer").grid(row=r, column=0, sticky="e", **pad)
         printers, default = self._list_printers()
-        self.w_printer = tk.StringVar(value=default or (printers[0] if printers else ""))
+        saved = self.cfg.get("printer", "")
+        initial = saved if saved in printers else (default or (printers[0] if printers else ""))
+        self.w_printer = tk.StringVar(value=initial)
         pr = ttk.Frame(f)
         pr.grid(row=r, column=1, columnspan=2, sticky="w", **pad)
         self.printer_cb = ttk.Combobox(pr, textvariable=self.w_printer,
                                        values=printers, state="readonly", width=42)
         self.printer_cb.pack(side="left")
+        self.printer_cb.bind("<<ComboboxSelected>>", lambda e: self._save_printer())
         ttk.Button(pr, text="↻", width=3, command=self._refresh_printers).pack(
             side="left", padx=4)
         r += 1
@@ -212,6 +215,12 @@ class CheckPrinterApp:
         self.printer_cb["values"] = printers
         if self.w_printer.get() not in printers:
             self.w_printer.set(default or (printers[0] if printers else ""))
+        self._save_printer()
+
+    def _save_printer(self):
+        """Remember the selected printer across runs."""
+        self.cfg["printer"] = self.w_printer.get()
+        cfgmod.save(self.cfg)
 
     def generate_and_open(self):
         check = self._collect_check()
@@ -248,9 +257,19 @@ class CheckPrinterApp:
 
     def print_alignment(self):
         cfgmod.ensure_dirs()
+        self._save_printer()
         path = os.path.join(cfgmod.OUTPUT_DIR, "alignment_test.pdf")
         build_alignment_pdf(self.cfg, path)
-        subprocess.run(["open", path])
+        printer = self.w_printer.get().strip()
+        target = printer or "the default printer"
+        cmd = ["lpr"]
+        if printer:
+            cmd += ["-P", printer]
+        cmd.append(path)
+        subprocess.run(cmd)
+        messagebox.showinfo("Alignment test",
+                            f"Alignment test sent to {target} (same print path as a "
+                            "real check). Check the marks against your stock.")
 
     # ---------- Settings ----------
     def _build_settings_tab(self):

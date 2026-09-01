@@ -34,16 +34,16 @@ DEFAULTS = {
     "font_path": "",          # optional licensed E-13B .ttf; blank = vector glyphs
     # --- Numbering ---
     "next_check_number": 1001,
+    # --- Printing ---
+    "printer": "",              # remembered CUPS printer name (blank = system default)
     # --- Layout (inches) ---
     "check_band_height": 3.5,   # height of the check portion at page bottom
     "num_stubs": 2,             # record stubs printed above the check (0-2)
     "offset_x": 0.0,            # global registration nudge, right = +
     "offset_y": 0.0,            # global registration nudge, up = +
-    "micr_baseline": 0.4375,    # MICR baseline above page bottom (7/16"): high
-                                # enough to clear a typical printer bottom margin,
-                                # still inside the 5/8" clear band
+    "micr_baseline": 0.31,      # MICR baseline above page bottom (inches)
     "micr_align": "transit",    # MICR anchor: transit | left | center | right
-    "micr_left_margin": 3.0,    # inches from left edge to the LEFT TRANSIT symbol
+    "micr_left_margin": 2.86,   # inches from left edge to the LEFT TRANSIT symbol
                                 # (transit align); or to the line start (left align)
     "micr_right_margin": 0.3125,  # gap from right paper edge to end of MICR (right align)
     "draw_border": False,       # draw a border around the check (open top)

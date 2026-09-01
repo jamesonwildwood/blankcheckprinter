@@ -84,8 +84,11 @@ check printer with MICR toner. Then:
   Size, choosing the printer in the Print dialog's Printer menu. (Recommended.)
 - **Print to selected printer** — sends straight to the printer chosen in the
   dropdown via `lpr` (no scaling applied).
-- **Print Alignment Test** — a 1-inch grid + perforation guides + MICR clear
-  band, to dial in placement on your stock before printing checks.
+- **Print Alignment Test** — prints a 1-inch grid + perforation guides + MICR
+  clear band + a left-transit marker to the **selected printer** (same print
+  path as a real check), to dial in placement on your stock.
+
+The **Printer** selection is remembered between runs.
 
 Each printed check is logged to the register CSV and the next check number
 advances automatically.
