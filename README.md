@@ -5,8 +5,9 @@ check stock. It draws the entire check — company block, payee, amount, legal
 line, bank block, signature line, record stubs, and the **E-13B MICR line** at
 the bottom — as a print-ready PDF you send to your printer.
 
-Built for the "check on the bottom" stock format: one negotiable check in the
-bottom ~3.5" of a Letter sheet, with up to two record stubs above it.
+Built for the VersaCheck bottom-check paper (commonly designated as Form 1002)
+stock format: one negotiable check in the bottom ~3.5" of a Letter sheet, with 
+up to two record stubs above it.
 
 ---
 
