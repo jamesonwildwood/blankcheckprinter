@@ -15,12 +15,15 @@ Everything is drawn by us because the stock is truly blank. A global
 (offset_x, offset_y) nudge lets you register the print to your paper.
 """
 
+import datetime
+
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 
 from .micr import (draw_micr_line, expand_template, micr_width, PITCH,
                    GLYPH_LEFT_PAD)
+from .numwords import amount_to_words
 
 PAGE_W, PAGE_H = letter                 # 612 x 792 pt (8.5 x 11 in)
 LM = 0.40 * inch                        # left margin inside the check
@@ -270,14 +273,8 @@ def _draw_perf_guides(c, cfg):
     c.setDash()
 
 
-def build_check_pdf(cfg, check, out_path):
-    """Render a full page (check + stubs) to out_path."""
-    c = canvas.Canvas(out_path, pagesize=letter)
-    c.translate(cfg.get("offset_x", 0.0) * inch, cfg.get("offset_y", 0.0) * inch)
-
-    if cfg.get("draw_perf_guides"):
-        _draw_perf_guides(c, cfg)
-
+def _draw_page_content(c, cfg, check):
+    """Draw the stubs + check for one page (shared by real and test output)."""
     bh = cfg["check_band_height"] * inch
     window = cfg.get("check_format") == "window"
     n = cfg.get("num_stubs", 0)
@@ -292,9 +289,45 @@ def build_check_pdf(cfg, check, out_path):
     # The check itself is always the standard single-check layout (no payee
     # address). In window mode the mailing addresses live only on the top fold.
     draw_negotiable_check(c, cfg, check)
+
+
+def build_check_pdf(cfg, check, out_path):
+    """Render a full page (check + stubs) to out_path."""
+    c = canvas.Canvas(out_path, pagesize=letter)
+    c.translate(cfg.get("offset_x", 0.0) * inch, cfg.get("offset_y", 0.0) * inch)
+
+    if cfg.get("draw_perf_guides"):
+        _draw_perf_guides(c, cfg)
+
+    _draw_page_content(c, cfg, check)
     c.showPage()
     c.save()
     return out_path
+
+
+def _alignment_sample(cfg):
+    """A fake, non-negotiable sample check for the alignment test.
+
+    Uses 999999999 for routing and account so it can never be cashed, $0.00,
+    the configured company as the From, and a placeholder payee.
+    """
+    sample_cfg = dict(cfg)
+    sample_cfg["routing"] = "999999999"
+    sample_cfg["account"] = "999999999"
+    if not sample_cfg.get("company_name"):
+        sample_cfg.update(company_name="Anytown Company", company_address="123 Main St",
+                          company_citystate="Pleasantville, AA 99999")
+    sample_chk = {
+        "number": cfg.get("next_check_number", 1001),
+        "date": datetime.date.today().strftime("%m/%d/%Y"),
+        "payee": "Anytown Company",
+        "payee_address": "123 Main St",
+        "payee_citystate": "Pleasantville, AA 99999",
+        "amount": 0.0,
+        "words": amount_to_words(0.0),
+        "memo": "ALIGNMENT TEST - VOID",
+    }
+    return sample_cfg, sample_chk
 
 
 def _draw_window_guides(c, y_offset=0.0, prefix=""):
@@ -317,8 +350,10 @@ def build_alignment_pdf(cfg, out_path):
     """
     c = canvas.Canvas(out_path, pagesize=letter)
     c.translate(cfg.get("offset_x", 0.0) * inch, cfg.get("offset_y", 0.0) * inch)
+    bh = cfg["check_band_height"] * inch
+    sample_cfg, sample_chk = _alignment_sample(cfg)
 
-    # 1-inch grid
+    # 1-inch grid (drawn first, behind everything)
     c.setLineWidth(0.25)
     c.setStrokeColorRGB(0.7, 0.7, 0.7)
     x = 0
@@ -331,8 +366,12 @@ def build_alignment_pdf(cfg, out_path):
         y += inch
     c.setStrokeColorRGB(0, 0, 0)
 
-    # Perforation guides + band labels
-    bh = cfg["check_band_height"] * inch
+    # MICR clear band shading (behind the check so the MICR prints on top)
+    c.setFillColorRGB(0.9, 0.95, 1.0)
+    c.rect(0, 0, PAGE_W, CLEAR_BAND, stroke=0, fill=1)
+    c.setFillColorRGB(0, 0, 0)
+
+    # Perforation guides
     c.setDash(4, 3)
     for i in range(1, cfg["num_stubs"] + 1):
         yy = i * bh
@@ -340,24 +379,20 @@ def build_alignment_pdf(cfg, out_path):
             c.line(0, yy, PAGE_W, yy)
     c.setDash()
 
-    # MICR clear band
-    c.setFillColorRGB(0.9, 0.95, 1.0)
-    c.rect(0, 0, PAGE_W, CLEAR_BAND, stroke=0, fill=1)
-    c.setFillColorRGB(0, 0, 0)
+    # The full sample check + stubs (fake routing/account, $0.00, non-negotiable)
+    _draw_page_content(c, sample_cfg, sample_chk)
+
     _label(c, LM, CLEAR_BAND - 0.18 * inch,
            'MICR clear band (5/8" from bottom) — keep clear except MICR', size=7)
 
-    # Sample MICR line so you can see where it lands
-    sample = expand_template(cfg["micr_template"], cfg.get("routing", "") or "123456789",
-                             cfg.get("account", "") or "0001234567", cfg["next_check_number"])
-    base = cfg["micr_baseline"] * inch
-    left = draw_micr_line(c, sample, right_x=_micr_right_x(cfg, sample),
-                          baseline_y=base, font_path=cfg.get("font_path") or None)
+    # Locate the MICR line the check drew, to mark the left Transit symbol.
+    micr = expand_template(sample_cfg["micr_template"], sample_cfg["routing"],
+                           sample_cfg["account"], sample_chk["number"])
+    base = sample_cfg["micr_baseline"] * inch
+    left = _micr_right_x(sample_cfg, micr) - micr_width(micr)
     _label(c, left, base - 0.16 * inch,
            f'MICR starts {left / inch:.2f}" from left edge', size=6)
-
-    # Mark the left Transit symbol so you can line it up to your target.
-    tx = left + _transit_index(sample) * PITCH + GLYPH_LEFT_PAD
+    tx = left + _transit_index(micr) * PITCH + GLYPH_LEFT_PAD
     c.setDash(2, 2)
     c.setLineWidth(0.5)
     c.line(tx, base, tx, base + 0.85 * inch)
@@ -365,26 +400,16 @@ def build_alignment_pdf(cfg, out_path):
     _label(c, tx + 0.03 * inch, base + 0.7 * inch,
            f'left transit: {tx / inch:.2f}" from left', size=6)
 
-    # Envelope window outlines + sample From/To (window format only)
+    # Envelope window outlines on the top fold (window format only)
     if cfg.get("check_format") == "window":
-        sample_cfg = dict(cfg)
-        if not sample_cfg.get("company_name"):
-            sample_cfg.update(company_name="Anycompany", company_address="123 Main St",
-                              company_citystate="Pleasantville, AA 99999")
-        sample_chk = {"payee": "Anycompany", "payee_address": "123 Main St",
-                      "payee_citystate": "Pleasantville, AA 99999"}
-        # Only the top fold carries the addresses (the check has none), so show
-        # the window guides + sample addresses there.
         n = cfg.get("num_stubs", 0)
         if n >= 1:
-            top_yb = n * bh
-            _draw_window_guides(c, top_yb, prefix="TOP FOLD ")
-            draw_window_address_panel(c, sample_cfg, sample_chk, y_bottom=top_yb)
+            _draw_window_guides(c, n * bh, prefix="TOP FOLD ")
 
     fmt = "WINDOW ENVELOPE" if cfg.get("check_format") == "window" else "STANDARD"
     _label(c, LM, PAGE_H - 0.3 * inch,
-           f"ALIGNMENT TEST ({fmt}) — 1in grid. Check band bottom = page bottom. "
-           f"Band height = {cfg['check_band_height']}in, stubs = {cfg['num_stubs']}.",
+           f"ALIGNMENT TEST ({fmt}) — VOID $0.00 sample, routing/account 999999999. "
+           f"1in grid; band {cfg['check_band_height']}in, stubs {cfg['num_stubs']}.",
            size=8)
     c.showPage()
     c.save()
