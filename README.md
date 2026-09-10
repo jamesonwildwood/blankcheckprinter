@@ -90,8 +90,7 @@ Fill in and **Save Settings**:
 
 ## Check formats
 
-Pick one in the **Format** dropdown on the Write a Check tab (remembered
-between runs):
+Pick one in **Settings → Check Format** (remembered between runs):
 
 - **Standard single check** — company top-left, bank bottom-left, payee on the
   "pay to the order of" line.
@@ -99,10 +98,14 @@ between runs):
   **mailing address** (name + street + city/state/ZIP) sits in the **bottom
   window**, your **company return address** in the **top window**, and the bank
   name/city moves to the **top-right-middle**. Fill in the two extra
-  **Payee address** fields. Dial the blocks into your envelope's windows with
-  the **Window: nudge…** offsets in Settings, and use **Print Alignment Test**
-  (which draws the window outlines) to check placement. Defaults target the OSDS
-  3-7/8 × 9-1/4" payroll envelope with the check inserted flush to the bottom.
+  **Payee address** fields on the Write tab. The **first fold** (stub above the
+  check) prints a clean To/From address panel at the same window positions, so
+  when folded it shows just the two addresses through the windows while the
+  check folds inside. Dial the blocks into your envelope's windows with the
+  **Window: nudge…** offsets in Settings, and use **Print Alignment Test**
+  (which draws the window outlines and sample addresses) to check placement.
+  Defaults target the OSDS 3-7/8 × 9-1/4" payroll envelope with the sheet
+  folded flush to the bottom.
 
 ## Writing a check (Write a Check tab)
 

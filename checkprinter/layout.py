@@ -281,6 +281,42 @@ def draw_window_check(c, cfg, check):
     _draw_micr(c, cfg, check)
 
 
+def draw_window_address_panel(c, cfg, check, y_bottom):
+    """First-fold panel for window format: only the From (company) and To
+    (payee) addresses, at the same window positions as the check.
+
+    When trifolded so this panel faces the envelope, the windows show just the
+    two addresses on an otherwise blank page (the check folds inside). Uses the
+    same window nudge offsets as the check so both stay calibrated together.
+    """
+    pdx = cfg.get("window_payee_dx", 0.0) * inch
+    pdy = cfg.get("window_payee_dy", 0.0) * inch
+    rdx = cfg.get("window_return_dx", 0.0) * inch
+    rdy = cfg.get("window_return_dy", 0.0) * inch
+
+    # From (company) — top window position
+    rx0 = 0.55 * inch + rdx
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(rx0, y_bottom + 3.00 * inch + rdy, cfg.get("company_name", ""))
+    c.setFont("Helvetica", 8.5)
+    yy = y_bottom + 2.82 * inch + rdy
+    for key in ("company_address", "company_citystate"):
+        if cfg.get(key):
+            c.drawString(rx0, yy, cfg[key])
+            yy -= 0.14 * inch
+
+    # To (payee) — bottom window position
+    px0 = 1.00 * inch + pdx
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(px0, y_bottom + 1.50 * inch + pdy, check.get("payee", ""))
+    c.setFont("Helvetica", 10.5)
+    yy = y_bottom + 1.28 * inch + pdy
+    for line in (check.get("payee_address", ""), check.get("payee_citystate", "")):
+        if line:
+            c.drawString(px0, yy, line)
+            yy -= 0.20 * inch
+
+
 def draw_stub(c, cfg, check, y_bottom, height):
     """Draw a compact record stub with its bottom edge at y_bottom."""
     top = y_bottom + height
@@ -330,10 +366,16 @@ def build_check_pdf(cfg, check, out_path):
         _draw_perf_guides(c, cfg)
 
     bh = cfg["check_band_height"] * inch
+    window = cfg.get("check_format") == "window"
     for i in range(cfg.get("num_stubs", 0)):
-        draw_stub(c, cfg, check, y_bottom=(i + 1) * bh, height=bh)
+        yb = (i + 1) * bh
+        if window and i == 0:
+            # First fold: clean To/From address panel for the envelope windows.
+            draw_window_address_panel(c, cfg, check, y_bottom=yb)
+        else:
+            draw_stub(c, cfg, check, y_bottom=yb, height=bh)
 
-    if cfg.get("check_format") == "window":
+    if window:
         draw_window_check(c, cfg, check)
     else:
         draw_negotiable_check(c, cfg, check)
@@ -409,9 +451,16 @@ def build_alignment_pdf(cfg, out_path):
     _label(c, tx + 0.03 * inch, base + 0.7 * inch,
            f'left transit: {tx / inch:.2f}" from left', size=6)
 
-    # Envelope window outlines (window format only)
+    # Envelope window outlines + sample From/To (window format only)
     if cfg.get("check_format") == "window":
         _draw_window_guides(c)
+        sample_cfg = dict(cfg)
+        if not sample_cfg.get("company_name"):
+            sample_cfg.update(company_name="Anycompany", company_address="123 Main St",
+                              company_citystate="Pleasantville, AA 99999")
+        sample_chk = {"payee": "Anycompany", "payee_address": "123 Main St",
+                      "payee_citystate": "Pleasantville, AA 99999"}
+        draw_window_address_panel(c, sample_cfg, sample_chk, y_bottom=0)
 
     fmt = "WINDOW ENVELOPE" if cfg.get("check_format") == "window" else "STANDARD"
     _label(c, LM, PAGE_H - 0.3 * inch,

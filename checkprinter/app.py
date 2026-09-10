@@ -83,15 +83,6 @@ class CheckPrinterApp:
         self.w_amount = tk.StringVar()
         self.w_memo = tk.StringVar()
 
-        # Format selector
-        ttk.Label(f, text="Format").grid(row=1, column=0, sticky="e", **pad)
-        self.w_format = tk.StringVar(
-            value=FORMAT_LABELS.get(self.cfg.get("check_format", "standard")))
-        fmt_cb = ttk.Combobox(f, textvariable=self.w_format, state="readonly",
-                              values=list(FORMAT_LABELS.values()), width=24)
-        fmt_cb.grid(row=1, column=1, sticky="w", **pad)
-        fmt_cb.bind("<<ComboboxSelected>>", lambda e: self._save_format())
-
         rows = [
             ("Check number", self.w_number),
             ("Date", self.w_date),
@@ -101,7 +92,7 @@ class CheckPrinterApp:
             ("Amount ($)", self.w_amount),
             ("Memo", self.w_memo),
         ]
-        r = 2
+        r = 1
         for label, var in rows:
             ttk.Label(f, text=label).grid(row=r, column=0, sticky="e", **pad)
             e = ttk.Entry(f, textvariable=var, width=48)
@@ -333,11 +324,6 @@ class CheckPrinterApp:
         self.cfg["printer"] = self.w_printer.get()
         cfgmod.save(self.cfg)
 
-    def _save_format(self):
-        """Remember the selected check format across runs."""
-        self.cfg["check_format"] = FORMAT_VALUES.get(self.w_format.get(), "standard")
-        cfgmod.save(self.cfg)
-
     def _clear_check_fields(self):
         """Clear payee, amount and memo for the next check (keep date)."""
         self.w_payee.set("")
@@ -438,6 +424,19 @@ class CheckPrinterApp:
                         row=i, column=1, sticky="w", padx=8, pady=3)
                 self.vars[key] = var
 
+        # Check format
+        fmt = section("Check Format")
+        ttk.Label(fmt, text="Format").grid(row=0, column=0, sticky="e", padx=8, pady=3)
+        self.w_format = tk.StringVar(
+            value=FORMAT_LABELS.get(self.cfg.get("check_format", "standard")))
+        ttk.Combobox(fmt, textvariable=self.w_format, state="readonly",
+                     values=list(FORMAT_LABELS.values()), width=24).grid(
+            row=0, column=1, sticky="w", padx=8, pady=3)
+        ttk.Label(fmt, text="Window envelope: payee address shows in the bottom "
+                            "window, company return address in the top window.",
+                  foreground="#555").grid(row=1, column=0, columnspan=2, sticky="w",
+                                          padx=8, pady=2)
+
         add_fields(section("Your Company"), COMPANY_FIELDS)
         add_fields(section("Bank / Account"), BANK_FIELDS)
 
@@ -537,6 +536,7 @@ class CheckPrinterApp:
                 messagebox.showerror("Invalid value",
                                      f"'{val}' is not valid for {key}.")
                 return
+        self.cfg["check_format"] = FORMAT_VALUES.get(self.w_format.get(), "standard")
         cfgmod.save(self.cfg)
         self.w_number.set(str(self.cfg["next_check_number"]))
         messagebox.showinfo("Saved", "Settings saved.")
