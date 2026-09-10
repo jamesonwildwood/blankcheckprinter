@@ -384,14 +384,15 @@ def build_check_pdf(cfg, check, out_path):
     return out_path
 
 
-def _draw_window_guides(c):
-    """Dashed outlines of the envelope windows, for the alignment test."""
+def _draw_window_guides(c, y_offset=0.0, prefix=""):
+    """Dashed outlines of the envelope windows at a panel offset (alignment test)."""
     c.setDash(4, 3)
     c.setLineWidth(0.8)
     for (x, y, w, h), name in ((ENV_BOTTOM_WINDOW, "BOTTOM WINDOW (payee)"),
                                (ENV_TOP_WINDOW, "TOP WINDOW (return address)")):
-        c.rect(x * inch, y * inch, w * inch, h * inch, stroke=1, fill=0)
-        _label(c, x * inch + 0.05 * inch, (y + h) * inch + 0.05 * inch, name, size=7)
+        c.rect(x * inch, y * inch + y_offset, w * inch, h * inch, stroke=1, fill=0)
+        _label(c, x * inch + 0.05 * inch, (y + h) * inch + y_offset + 0.05 * inch,
+               prefix + name, size=7)
     c.setDash()
 
 
@@ -453,14 +454,19 @@ def build_alignment_pdf(cfg, out_path):
 
     # Envelope window outlines + sample From/To (window format only)
     if cfg.get("check_format") == "window":
-        _draw_window_guides(c)
         sample_cfg = dict(cfg)
         if not sample_cfg.get("company_name"):
             sample_cfg.update(company_name="Anycompany", company_address="123 Main St",
                               company_citystate="Pleasantville, AA 99999")
         sample_chk = {"payee": "Anycompany", "payee_address": "123 Main St",
                       "payee_citystate": "Pleasantville, AA 99999"}
+        # Check panel
+        _draw_window_guides(c, 0.0, prefix="CHECK ")
         draw_window_address_panel(c, sample_cfg, sample_chk, y_bottom=0)
+        # First-fold panel (the fold that faces the window when mailed)
+        if cfg.get("num_stubs", 0) >= 1:
+            _draw_window_guides(c, bh, prefix="1ST FOLD ")
+            draw_window_address_panel(c, sample_cfg, sample_chk, y_bottom=bh)
 
     fmt = "WINDOW ENVELOPE" if cfg.get("check_format") == "window" else "STANDARD"
     _label(c, LM, PAGE_H - 0.3 * inch,
