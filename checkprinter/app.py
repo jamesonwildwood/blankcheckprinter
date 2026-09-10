@@ -42,6 +42,7 @@ LAYOUT_FIELDS = [
     ("draw_perf_guides", "Draw dashed perforation guides", "bool"),
 ]
 
+NEW_PROFILE = "-- New --"
 FORMAT_LABELS = {"bottom": "Check on the Bottom", "top": "Check on the Top"}
 FORMAT_VALUES = {v: k for k, v in FORMAT_LABELS.items()}
 ENVELOPE_LABELS = {"10_double_left": "#10 Double Left Windows"}
@@ -341,8 +342,26 @@ class CheckPrinterApp:
     def _profile_names(self):
         return [p.get("nickname", "") for p in self._bank_profiles()]
 
+    def _profile_choices(self):
+        return [NEW_PROFILE] + self._profile_names()
+
     def _refresh_profiles(self):
-        self.profile_cb["values"] = self._profile_names()
+        self.profile_cb["values"] = self._profile_choices()
+
+    def _on_profile_selected(self):
+        if self.w_profile.get() == NEW_PROFILE:
+            self._new_bank_profile()
+        else:
+            self._load_bank_profile()
+
+    def _new_bank_profile(self):
+        """Blank the nickname and bank fields for a fresh profile."""
+        self.w_nickname.set("")
+        for k in self.PROFILE_KEYS:
+            if k in self.vars:
+                self.vars[k].set("")
+        self.cfg["active_profile"] = ""
+        cfgmod.save(self.cfg)
 
     def _save_bank_profile(self):
         nickname = self.w_nickname.get().strip()
@@ -514,10 +533,10 @@ class CheckPrinterApp:
         ttk.Label(bank, text="Load profile").grid(row=r, column=0, sticky="e", padx=8, pady=3)
         self.w_profile = tk.StringVar()
         self.profile_cb = ttk.Combobox(bank, textvariable=self.w_profile, width=28,
-                                       state="readonly", values=self._profile_names())
+                                       state="readonly", values=self._profile_choices())
         self.profile_cb.grid(row=r, column=1, sticky="w", padx=8, pady=3)
-        self.profile_cb.bind("<<ComboboxSelected>>", lambda e: self._load_bank_profile())
-        self.w_profile.set(self.cfg.get("active_profile", ""))
+        self.profile_cb.bind("<<ComboboxSelected>>", lambda e: self._on_profile_selected())
+        self.w_profile.set(self.cfg.get("active_profile") or NEW_PROFILE)
         r += 1
         ttk.Label(bank, text="Nickname").grid(row=r, column=0, sticky="e", padx=8, pady=3)
         self.w_nickname = tk.StringVar(value=self.cfg.get("active_profile", ""))
