@@ -367,10 +367,11 @@ def build_check_pdf(cfg, check, out_path):
 
     bh = cfg["check_band_height"] * inch
     window = cfg.get("check_format") == "window"
-    for i in range(cfg.get("num_stubs", 0)):
+    n = cfg.get("num_stubs", 0)
+    for i in range(n):
         yb = (i + 1) * bh
-        if window and i == 0:
-            # First fold: clean To/From address panel for the envelope windows.
+        if window and i == n - 1:
+            # Top fold: clean To/From address panel for the envelope windows.
             draw_window_address_panel(c, cfg, check, y_bottom=yb)
         else:
             draw_stub(c, cfg, check, y_bottom=yb, height=bh)
@@ -463,10 +464,12 @@ def build_alignment_pdf(cfg, out_path):
         # Check panel
         _draw_window_guides(c, 0.0, prefix="CHECK ")
         draw_window_address_panel(c, sample_cfg, sample_chk, y_bottom=0)
-        # First-fold panel (the fold that faces the window when mailed)
-        if cfg.get("num_stubs", 0) >= 1:
-            _draw_window_guides(c, bh, prefix="1ST FOLD ")
-            draw_window_address_panel(c, sample_cfg, sample_chk, y_bottom=bh)
+        # Top fold panel (the fold that faces the window when mailed)
+        n = cfg.get("num_stubs", 0)
+        if n >= 1:
+            top_yb = n * bh
+            _draw_window_guides(c, top_yb, prefix="TOP FOLD ")
+            draw_window_address_panel(c, sample_cfg, sample_chk, y_bottom=top_yb)
 
     fmt = "WINDOW ENVELOPE" if cfg.get("check_format") == "window" else "STANDARD"
     _label(c, LM, PAGE_H - 0.3 * inch,
