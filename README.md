@@ -90,19 +90,23 @@ Fill in and **Save Settings**:
 
 ## Check formats
 
-Pick one in **Settings → Check Format** (remembered between runs):
+Set these in **Settings → Check & Envelope** (remembered between runs). The
+check itself is always a standard single check (company, bank, "pay to the
+order of" with the payee **name only** — no mailing address on the check).
 
-- **Standard single check** — company top-left, bank bottom-left, payee on the
-  "pay to the order of" line.
-- **Window envelope** — the **check is the standard single check** (payee name
-  only, no address on it). The mailing addresses print on the **top fold** as a
-  clean To/From panel for a double-window envelope: payee's mailing address for
-  the **bottom window**, your **company return address** for the **top window**.
-  Fill in the two extra **Payee address** fields on the Write tab. Trifold so
-  the top panel faces the windows; the check (and the record stub) fold inside.
-  Dial the blocks into your envelope's windows with the **Window: nudge…**
-  offsets in Settings, and use **Print Alignment Test** (window outlines +
-  sample From/To on the top fold) to check placement. Defaults target the OSDS
+- **Format** — where the check sits on the stock:
+  - **Check on the Bottom** — check at the page bottom, record stub in the
+    middle, address fold on top.
+  - **Check on the Top** — check at the page top, record stub in the middle,
+    address fold on the bottom (check and address swap).
+- **Envelope** — **#10 Double Left Windows**: adds a clean To/From address panel
+  on the fold **opposite** the check, for a double-window envelope — payee's
+  mailing address for the **bottom window**, your **company return address** for
+  the **top window**, left-aligned to the check's margin. Fill in the two extra
+  **Payee address** fields on the Write tab, trifold so the address panel faces
+  the windows (the check folds inside), and use **Print Alignment Test** (draws
+  the window outlines + a VOID sample check) to calibrate. Nudge the blocks with
+  the **Window: nudge…** offsets in Settings. Defaults target the OSDS
   3-7/8 × 9-1/4" payroll envelope (both windows left-aligned ~0.25").
 
 ## Writing a check (Write a Check tab)

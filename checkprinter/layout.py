@@ -278,22 +278,44 @@ def _has_window_envelope(cfg):
     return cfg.get("envelope", "10_double_left") not in (None, "", "none")
 
 
+def check_bottom_y(cfg):
+    """Y of the check panel's bottom edge (0 for check-on-bottom)."""
+    if cfg.get("check_position") == "top":
+        return cfg.get("num_stubs", 0) * cfg["check_band_height"] * inch
+    return 0.0
+
+
+def address_bottom_y(cfg):
+    """Y of the address panel's bottom edge (the fold opposite the check)."""
+    if cfg.get("check_position") == "top":
+        return 0.0
+    return cfg.get("num_stubs", 0) * cfg["check_band_height"] * inch
+
+
 def _draw_page_content(c, cfg, check):
-    """Draw the stubs + check for one page (shared by real and test output)."""
+    """Draw the stubs + check for one page (shared by real and test output).
+
+    The check is always the standard single-check layout (no payee address); a
+    window envelope adds a To/From address panel on the fold opposite the check.
+    Check-on-top swaps the check and address panels.
+    """
     bh = cfg["check_band_height"] * inch
     window = _has_window_envelope(cfg)
     n = cfg.get("num_stubs", 0)
+    top = cfg.get("check_position") == "top"
+
     for i in range(n):
-        yb = (i + 1) * bh
-        if window and i == n - 1:
-            # Top fold: clean To/From address panel for the envelope windows.
+        yb = i * bh if top else (i + 1) * bh
+        is_address_fold = window and (i == 0 if top else i == n - 1)
+        if is_address_fold:
             draw_window_address_panel(c, cfg, check, y_bottom=yb)
         else:
             draw_stub(c, cfg, check, y_bottom=yb, height=bh)
 
-    # The check itself is always the standard single-check layout (no payee
-    # address). In window mode the mailing addresses live only on the top fold.
+    c.saveState()
+    c.translate(0, check_bottom_y(cfg))
     draw_negotiable_check(c, cfg, check)
+    c.restoreState()
 
 
 def build_check_pdf(cfg, check, out_path):
@@ -357,6 +379,7 @@ def build_alignment_pdf(cfg, out_path):
     c.translate(cfg.get("offset_x", 0.0) * inch, cfg.get("offset_y", 0.0) * inch)
     bh = cfg["check_band_height"] * inch
     sample_cfg, sample_chk = _alignment_sample(cfg)
+    check_yb = check_bottom_y(cfg)      # bottom edge of the check panel
 
     # 1-inch grid (drawn first, behind everything)
     c.setLineWidth(0.25)
@@ -371,9 +394,9 @@ def build_alignment_pdf(cfg, out_path):
         y += inch
     c.setStrokeColorRGB(0, 0, 0)
 
-    # MICR clear band shading (behind the check so the MICR prints on top)
+    # MICR clear band shading, at the check's bottom edge (behind the check).
     c.setFillColorRGB(0.9, 0.95, 1.0)
-    c.rect(0, 0, PAGE_W, CLEAR_BAND, stroke=0, fill=1)
+    c.rect(0, check_yb, PAGE_W, CLEAR_BAND, stroke=0, fill=1)
     c.setFillColorRGB(0, 0, 0)
 
     # Perforation guides
@@ -387,13 +410,14 @@ def build_alignment_pdf(cfg, out_path):
     # The full sample check + stubs (fake routing/account, $0.00, non-negotiable)
     _draw_page_content(c, sample_cfg, sample_chk)
 
-    _label(c, LM, CLEAR_BAND - 0.18 * inch,
-           'MICR clear band (5/8" from bottom) — keep clear except MICR', size=7)
+    _label(c, LM, check_yb + CLEAR_BAND - 0.18 * inch,
+           'MICR clear band (5/8" from bottom of check) — keep clear except MICR',
+           size=7)
 
     # Locate the MICR line the check drew, to mark the left Transit symbol.
     micr = expand_template(sample_cfg["micr_template"], sample_cfg["routing"],
                            sample_cfg["account"], sample_chk["number"])
-    base = sample_cfg["micr_baseline"] * inch
+    base = check_yb + sample_cfg["micr_baseline"] * inch
     left = _micr_right_x(sample_cfg, micr) - micr_width(micr)
     _label(c, left, base - 0.16 * inch,
            f'MICR starts {left / inch:.2f}" from left edge', size=6)
@@ -405,11 +429,9 @@ def build_alignment_pdf(cfg, out_path):
     _label(c, tx + 0.03 * inch, base + 0.7 * inch,
            f'left transit: {tx / inch:.2f}" from left', size=6)
 
-    # Envelope window outlines on the top fold (window envelope only)
-    if _has_window_envelope(cfg):
-        n = cfg.get("num_stubs", 0)
-        if n >= 1:
-            _draw_window_guides(c, n * bh, prefix="TOP FOLD ")
+    # Envelope window outlines on the address fold (window envelope only)
+    if _has_window_envelope(cfg) and cfg.get("num_stubs", 0) >= 1:
+        _draw_window_guides(c, address_bottom_y(cfg), prefix="ADDRESS FOLD ")
 
     _label(c, LM, PAGE_H - 0.3 * inch,
            "ALIGNMENT TEST — VOID $0.00 sample, routing/account 999999999. "

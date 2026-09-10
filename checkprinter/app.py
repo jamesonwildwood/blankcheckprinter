@@ -42,7 +42,7 @@ LAYOUT_FIELDS = [
     ("draw_perf_guides", "Draw dashed perforation guides", "bool"),
 ]
 
-FORMAT_LABELS = {"bottom": "Check on the Bottom"}
+FORMAT_LABELS = {"bottom": "Check on the Bottom", "top": "Check on the Top"}
 FORMAT_VALUES = {v: k for k, v in FORMAT_LABELS.items()}
 ENVELOPE_LABELS = {"10_double_left": "#10 Double Left Windows"}
 ENVELOPE_VALUES = {v: k for k, v in ENVELOPE_LABELS.items()}
