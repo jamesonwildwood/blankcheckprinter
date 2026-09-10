@@ -264,15 +264,15 @@ def draw_window_check(c, cfg, check):
             c.drawString(px0, yy, line)
             yy -= 0.20 * inch
 
-    # --- Memo under the payee name/address ---
-    memo_y = 0.86 * inch
+    # --- Memo under the payee name/address, resting just above the clear band ---
+    memo_y = 0.65 * inch
     _label(c, LM, memo_y, "MEMO", size=6)
     _line(c, LM + 0.50 * inch, 4.30 * inch, memo_y)
     c.setFont("Helvetica", 9)
     c.drawString(LM + 0.58 * inch, memo_y + 0.04 * inch, check.get("memo", ""))
 
-    # --- Signature (bottom-right), lowered ~1/4" ---
-    sig_y = 0.68 * inch
+    # --- Signature (bottom-right); caption rests just above the clear band ---
+    sig_y = 0.795 * inch
     _line(c, RX - 2.7 * inch, RX, sig_y)
     _label(c, (RX - 2.7 * inch + RX) / 2.0, sig_y - 0.145 * inch,
            cfg.get("signature_text", "AUTHORIZED SIGNATURE"), size=6, align="center")
