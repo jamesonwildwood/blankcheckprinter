@@ -34,11 +34,12 @@ CLEAR_BAND = 0.625 * inch               # MICR clear band; keep other ink above
 ENV_BOTTOM_WINDOW = (0.25, 0.75, 3.5, 1.0)    # payee window
 ENV_TOP_WINDOW = (0.25, 2.5, 3.5, 0.875)      # return window
 
-# Left edge (inches) of the return-address (From) and payee (To) blocks within a
-# panel; both aligned to the windows' left edge. Nudge further with the
-# window_return_dx / window_payee_dx offsets in Settings.
-WIN_RETURN_X = 0.25     # From block
-WIN_PAYEE_X = 0.25      # To block
+# Left edge (inches) of the return-address (From) and payee (To) blocks on the
+# top fold; aligned to the check's left margin ("Pay to" text), slightly inset
+# from the window edge. Nudge further with the window_return_dx / window_payee_dx
+# offsets in Settings.
+WIN_RETURN_X = 0.40     # From block
+WIN_PAYEE_X = 0.40      # To block
 
 
 def _line(c, x1, x2, y, width=0.7):
@@ -193,101 +194,6 @@ def _draw_micr(c, cfg, check):
     )
 
 
-def draw_window_check(c, cfg, check):
-    """Window-envelope variant: company return address in the top window, payee
-    mailing address in the bottom window, bank name/city top-right-middle.
-
-    The address blocks can be nudged into your envelope's windows with the
-    window_payee_* / window_return_* offsets. Use the alignment test (window
-    format) to see the window outlines.
-    """
-    pdx = cfg.get("window_payee_dx", 0.0) * inch
-    pdy = cfg.get("window_payee_dy", 0.0) * inch
-    rdx = cfg.get("window_return_dx", 0.0) * inch
-    rdy = cfg.get("window_return_dy", 0.0) * inch
-
-    # --- Company return address (top window); top line aligned to the bank name ---
-    rx0 = WIN_RETURN_X * inch + rdx
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(rx0, 3.00 * inch + rdy, cfg.get("company_name", ""))
-    c.setFont("Helvetica", 8.5)
-    yy = 2.82 * inch + rdy
-    for key in ("company_address", "company_citystate"):
-        if cfg.get(key):
-            c.drawString(rx0, yy, cfg[key])
-            yy -= 0.14 * inch
-
-    # --- Check number + fraction (top-right, aligned to the bank name) ---
-    c.setFont("Helvetica", 8)
-    c.drawRightString(RX - 0.62 * inch, 3.00 * inch, "No.")
-    c.setFont("Helvetica-Bold", 13)
-    c.drawRightString(RX, 3.00 * inch, str(check["number"]))
-    if cfg.get("fraction"):
-        _label(c, RX, 2.82 * inch, cfg["fraction"], size=8, align="right")
-
-    # --- Bank name / city (top-right-middle) ---
-    bx = 4.75 * inch
-    c.setFont("Helvetica-Bold", 9)
-    c.drawString(bx, 3.0 * inch, cfg.get("bank_name", ""))
-    if cfg.get("bank_citystate"):
-        c.setFont("Helvetica", 8)
-        c.drawString(bx, 2.87 * inch, cfg["bank_citystate"])
-
-    # --- Date (solid band between the two windows) ---
-    date_y = 2.40 * inch
-    _line(c, RX - 1.75 * inch, RX, date_y)
-    c.setFont("Helvetica", 10)
-    c.drawString(RX - 1.65 * inch, date_y + 0.045 * inch, check.get("date", ""))
-    _label(c, RX - 0.875 * inch, date_y - 0.135 * inch, "DATE", size=6, align="center")
-
-    # --- Written amount line + DOLLARS (solid band) ---
-    words_y = 2.12 * inch
-    _line(c, LM, RX - 0.80 * inch, words_y)
-    c.setFont("Helvetica", 10.5)
-    c.drawString(LM + 0.04 * inch, words_y + 0.045 * inch, check.get("words", ""))
-    c.setFont("Helvetica-Bold", 9)
-    c.drawRightString(RX, words_y + 0.045 * inch, "DOLLARS")
-
-    # --- Amount box (solid band, just above the bottom window) ---
-    box_x0, box_x1 = RX - 1.45 * inch, RX
-    box_y0, box_y1 = 1.80 * inch, 2.00 * inch
-    c.setFont("Helvetica-Bold", 12)
-    c.drawRightString(box_x0 - 0.06 * inch, box_y0 + 0.05 * inch, "$")
-    c.setLineWidth(0.9)
-    c.rect(box_x0, box_y0, box_x1 - box_x0, box_y1 - box_y0, stroke=1, fill=0)
-    c.setFont("Helvetica-Bold", 12)
-    c.drawRightString(box_x1 - 0.06 * inch, box_y0 + 0.055 * inch,
-                      "**" + _fmt_amount(check["amount"]))
-
-    # --- "PAY TO THE ORDER OF" + payee mailing address (bottom window) ---
-    _label(c, LM, 1.86 * inch, "PAY TO THE ORDER OF", size=6)
-    px0 = WIN_PAYEE_X * inch + pdx
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(px0, 1.50 * inch + pdy, check.get("payee", ""))
-    c.setFont("Helvetica", 10.5)
-    yy = 1.28 * inch + pdy
-    for line in (check.get("payee_address", ""), check.get("payee_citystate", "")):
-        if line:
-            c.drawString(px0, yy, line)
-            yy -= 0.20 * inch
-
-    # --- Memo under the payee name/address, resting just above the clear band ---
-    memo_y = 0.65 * inch
-    _label(c, LM, memo_y, "MEMO", size=6)
-    _line(c, LM + 0.50 * inch, 4.30 * inch, memo_y)
-    c.setFont("Helvetica", 9)
-    c.drawString(LM + 0.58 * inch, memo_y + 0.04 * inch, check.get("memo", ""))
-
-    # --- Signature (bottom-right); caption rests just above the clear band ---
-    sig_y = 0.795 * inch
-    _line(c, RX - 2.7 * inch, RX, sig_y)
-    _label(c, (RX - 2.7 * inch + RX) / 2.0, sig_y - 0.145 * inch,
-           cfg.get("signature_text", "AUTHORIZED SIGNATURE"), size=6, align="center")
-
-    # --- MICR line ---
-    _draw_micr(c, cfg, check)
-
-
 def draw_window_address_panel(c, cfg, check, y_bottom):
     """First-fold panel for window format: only the From (company) and To
     (payee) addresses, at the same window positions as the check.
@@ -383,10 +289,9 @@ def build_check_pdf(cfg, check, out_path):
         else:
             draw_stub(c, cfg, check, y_bottom=yb, height=bh)
 
-    if window:
-        draw_window_check(c, cfg, check)
-    else:
-        draw_negotiable_check(c, cfg, check)
+    # The check itself is always the standard single-check layout (no payee
+    # address). In window mode the mailing addresses live only on the top fold.
+    draw_negotiable_check(c, cfg, check)
     c.showPage()
     c.save()
     return out_path
@@ -468,10 +373,8 @@ def build_alignment_pdf(cfg, out_path):
                               company_citystate="Pleasantville, AA 99999")
         sample_chk = {"payee": "Anycompany", "payee_address": "123 Main St",
                       "payee_citystate": "Pleasantville, AA 99999"}
-        # Check panel
-        _draw_window_guides(c, 0.0, prefix="CHECK ")
-        draw_window_address_panel(c, sample_cfg, sample_chk, y_bottom=0)
-        # Top fold panel (the fold that faces the window when mailed)
+        # Only the top fold carries the addresses (the check has none), so show
+        # the window guides + sample addresses there.
         n = cfg.get("num_stubs", 0)
         if n >= 1:
             top_yb = n * bh

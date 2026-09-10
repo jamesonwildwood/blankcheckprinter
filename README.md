@@ -94,18 +94,16 @@ Pick one in **Settings → Check Format** (remembered between runs):
 
 - **Standard single check** — company top-left, bank bottom-left, payee on the
   "pay to the order of" line.
-- **Window envelope** — laid out for a double-window envelope: the payee's
-  **mailing address** (name + street + city/state/ZIP) sits in the **bottom
-  window**, your **company return address** in the **top window**, and the bank
-  name/city moves to the **top-right-middle**. Fill in the two extra
-  **Payee address** fields on the Write tab. The **first fold** (stub above the
-  check) prints a clean To/From address panel at the same window positions, so
-  when folded it shows just the two addresses through the windows while the
-  check folds inside. Dial the blocks into your envelope's windows with the
-  **Window: nudge…** offsets in Settings, and use **Print Alignment Test**
-  (which draws the window outlines and sample addresses) to check placement.
-  Defaults target the OSDS 3-7/8 × 9-1/4" payroll envelope with the sheet
-  folded flush to the bottom.
+- **Window envelope** — the **check is the standard single check** (payee name
+  only, no address on it). The mailing addresses print on the **top fold** as a
+  clean To/From panel for a double-window envelope: payee's mailing address for
+  the **bottom window**, your **company return address** for the **top window**.
+  Fill in the two extra **Payee address** fields on the Write tab. Trifold so
+  the top panel faces the windows; the check (and the record stub) fold inside.
+  Dial the blocks into your envelope's windows with the **Window: nudge…**
+  offsets in Settings, and use **Print Alignment Test** (window outlines +
+  sample From/To on the top fold) to check placement. Defaults target the OSDS
+  3-7/8 × 9-1/4" payroll envelope (both windows left-aligned ~0.25").
 
 ## Writing a check (Write a Check tab)
 
