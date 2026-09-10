@@ -29,6 +29,10 @@ DEFAULTS = {
     "routing": "",            # 9-digit ABA routing/transit number
     "account": "",            # your account number
     "fraction": "",           # transit fraction, e.g. 66-1234/1210
+    # Saved bank/account profiles you can switch between. Each is a dict with
+    # nickname + bank fields + micr_template + next_check_number.
+    "bank_profiles": [],
+    "active_profile": "",     # nickname of the currently loaded profile
     # --- MICR line ---
     "micr_template": MICR_PRESET_BUSINESS,
     "font_path": "",          # optional licensed E-13B .ttf; blank = vector glyphs
@@ -70,7 +74,10 @@ def load():
     except (json.JSONDecodeError, OSError):
         pass
     # keep only known keys but preserve default for missing ones
-    return {k: cfg.get(k, DEFAULTS[k]) for k in DEFAULTS}
+    out = {k: cfg.get(k, DEFAULTS[k]) for k in DEFAULTS}
+    # fresh copy of the profiles list/dicts so callers never mutate DEFAULTS
+    out["bank_profiles"] = [dict(p) for p in out.get("bank_profiles") or []]
+    return out
 
 
 def save(cfg):

@@ -208,6 +208,12 @@ class CheckPrinterApp:
 
     def _advance_number(self, number):
         self.cfg["next_check_number"] = number + 1
+        # keep the active profile's own check sequence in sync
+        active = self.cfg.get("active_profile")
+        if active:
+            for p in self.cfg.get("bank_profiles", []):
+                if p.get("nickname") == active:
+                    p["next_check_number"] = number + 1
         cfgmod.save(self.cfg)
         self.w_number.set(str(self.cfg["next_check_number"]))
         if "next_check_number" in self.vars:
@@ -326,6 +332,65 @@ class CheckPrinterApp:
         self.cfg["printer"] = self.w_printer.get()
         cfgmod.save(self.cfg)
 
+    # ---------- Bank/account profiles ----------
+    PROFILE_KEYS = ("bank_name", "bank_citystate", "routing", "account", "fraction")
+
+    def _bank_profiles(self):
+        return list(self.cfg.get("bank_profiles", []))
+
+    def _profile_names(self):
+        return [p.get("nickname", "") for p in self._bank_profiles()]
+
+    def _refresh_profiles(self):
+        self.profile_cb["values"] = self._profile_names()
+
+    def _save_bank_profile(self):
+        nickname = self.w_nickname.get().strip()
+        if not nickname:
+            messagebox.showerror("Nickname required",
+                                 "Enter a nickname to save this bank/account.")
+            return
+        prof = {"nickname": nickname}
+        for k in self.PROFILE_KEYS:
+            prof[k] = self.vars[k].get().strip()
+        prof["micr_template"] = self.vars.get("micr_template",
+                                              tk.StringVar(value=self.cfg["micr_template"])).get()
+        try:
+            prof["next_check_number"] = int(self.w_number.get())
+        except ValueError:
+            prof["next_check_number"] = self.cfg.get("next_check_number", 1001)
+        profiles = [p for p in self._bank_profiles() if p.get("nickname") != nickname]
+        profiles.append(prof)
+        self.cfg["bank_profiles"] = profiles
+        self.cfg["active_profile"] = nickname
+        cfgmod.save(self.cfg)
+        self._refresh_profiles()
+        self.w_profile.set(nickname)
+        messagebox.showinfo("Saved", f"Saved bank/account profile '{nickname}'.")
+
+    def _load_bank_profile(self):
+        nickname = self.w_profile.get()
+        prof = next((p for p in self._bank_profiles()
+                     if p.get("nickname") == nickname), None)
+        if not prof:
+            return
+        for k in self.PROFILE_KEYS:
+            if k in self.vars:
+                self.vars[k].set(prof.get(k, ""))
+            self.cfg[k] = prof.get(k, "")
+        if prof.get("micr_template"):
+            self.cfg["micr_template"] = prof["micr_template"]
+            if "micr_template" in self.vars:
+                self.vars["micr_template"].set(prof["micr_template"])
+        if prof.get("next_check_number") is not None:
+            self.cfg["next_check_number"] = prof["next_check_number"]
+            self.w_number.set(str(prof["next_check_number"]))
+            if "next_check_number" in self.vars:
+                self.vars["next_check_number"].set(str(prof["next_check_number"]))
+        self.w_nickname.set(nickname)
+        self.cfg["active_profile"] = nickname
+        cfgmod.save(self.cfg)
+
     def _clear_check_fields(self):
         """Clear payee, amount and memo for the next check (keep date)."""
         self.w_payee.set("")
@@ -442,7 +507,33 @@ class CheckPrinterApp:
             row=1, column=1, sticky="w", padx=8, pady=3)
 
         add_fields(section("Your Company"), COMPANY_FIELDS)
-        add_fields(section("Bank / Account"), BANK_FIELDS)
+
+        # Bank / Account with saved, switchable profiles
+        bank = section("Bank / Account")
+        r = 0
+        ttk.Label(bank, text="Load profile").grid(row=r, column=0, sticky="e", padx=8, pady=3)
+        self.w_profile = tk.StringVar()
+        self.profile_cb = ttk.Combobox(bank, textvariable=self.w_profile, width=28,
+                                       state="readonly", values=self._profile_names())
+        self.profile_cb.grid(row=r, column=1, sticky="w", padx=8, pady=3)
+        self.profile_cb.bind("<<ComboboxSelected>>", lambda e: self._load_bank_profile())
+        self.w_profile.set(self.cfg.get("active_profile", ""))
+        r += 1
+        ttk.Label(bank, text="Nickname").grid(row=r, column=0, sticky="e", padx=8, pady=3)
+        self.w_nickname = tk.StringVar(value=self.cfg.get("active_profile", ""))
+        ttk.Entry(bank, textvariable=self.w_nickname, width=42).grid(
+            row=r, column=1, sticky="w", padx=8, pady=3)
+        r += 1
+        for key, label, kind in BANK_FIELDS:
+            var = tk.StringVar(value=str(self.cfg.get(key, "")))
+            ttk.Label(bank, text=label).grid(row=r, column=0, sticky="e", padx=8, pady=3)
+            ttk.Entry(bank, textvariable=var, width=42).grid(
+                row=r, column=1, sticky="w", padx=8, pady=3)
+            self.vars[key] = var
+            r += 1
+        ttk.Button(bank, text="Save Bank/Account Profile",
+                   command=self._save_bank_profile).grid(row=r, column=1, sticky="w",
+                                                         padx=8, pady=6)
 
         # MICR section with presets + font chooser
         micr = section("MICR Line (bottom number line)")

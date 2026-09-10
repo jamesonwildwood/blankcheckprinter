@@ -78,7 +78,11 @@ Fill in and **Save Settings**:
 
 - **Your Company** — name, address, optional tagline/phone.
 - **Bank / Account** — bank name, city/state, 9-digit routing number, account
-  number, and the transit fraction (from a voided check or your bank).
+  number, and the transit fraction (from a voided check or your bank). Give it a
+  **Nickname** and click **Save Bank/Account Profile** to store it; the **Load
+  profile** dropdown switches between saved accounts. Each profile remembers its
+  own MICR template and check-number sequence, so switching accounts restores
+  the right next check number (and it advances per-account as you print).
 - **MICR Line** — the bottom number line. Pick a preset or edit the template:
   - `{r}` routing, `{a}` account, `{c}` check number
   - `A`=Transit `B`=Amount `C`=On-Us `D`=Dash symbols; digits/spaces literal
