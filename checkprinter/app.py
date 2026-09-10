@@ -42,8 +42,10 @@ LAYOUT_FIELDS = [
     ("draw_perf_guides", "Draw dashed perforation guides", "bool"),
 ]
 
-FORMAT_LABELS = {"standard": "Standard single check", "window": "Window envelope"}
+FORMAT_LABELS = {"bottom": "Check on the Bottom"}
 FORMAT_VALUES = {v: k for k, v in FORMAT_LABELS.items()}
+ENVELOPE_LABELS = {"10_double_left": "#10 Double Left Windows"}
+ENVELOPE_VALUES = {v: k for k, v in ENVELOPE_LABELS.items()}
 
 
 class CheckPrinterApp:
@@ -87,8 +89,8 @@ class CheckPrinterApp:
             ("Check number", self.w_number),
             ("Date", self.w_date),
             ("Pay to the order of", self.w_payee),
-            ("Payee address (window format)", self.w_payee_addr),
-            ("Payee city, state ZIP (window format)", self.w_payee_city),
+            ("Payee address (for envelope)", self.w_payee_addr),
+            ("Payee city, state ZIP (for envelope)", self.w_payee_city),
             ("Amount ($)", self.w_amount),
             ("Memo", self.w_memo),
         ]
@@ -424,18 +426,20 @@ class CheckPrinterApp:
                         row=i, column=1, sticky="w", padx=8, pady=3)
                 self.vars[key] = var
 
-        # Check format
-        fmt = section("Check Format")
+        # Check format + envelope
+        fmt = section("Check & Envelope")
         ttk.Label(fmt, text="Format").grid(row=0, column=0, sticky="e", padx=8, pady=3)
-        self.w_format = tk.StringVar(
-            value=FORMAT_LABELS.get(self.cfg.get("check_format", "standard")))
-        ttk.Combobox(fmt, textvariable=self.w_format, state="readonly",
+        self.w_position = tk.StringVar(
+            value=FORMAT_LABELS.get(self.cfg.get("check_position", "bottom")))
+        ttk.Combobox(fmt, textvariable=self.w_position, state="readonly",
                      values=list(FORMAT_LABELS.values()), width=24).grid(
             row=0, column=1, sticky="w", padx=8, pady=3)
-        ttk.Label(fmt, text="Window envelope: payee address shows in the bottom "
-                            "window, company return address in the top window.",
-                  foreground="#555").grid(row=1, column=0, columnspan=2, sticky="w",
-                                          padx=8, pady=2)
+        ttk.Label(fmt, text="Envelope").grid(row=1, column=0, sticky="e", padx=8, pady=3)
+        self.w_envelope = tk.StringVar(
+            value=ENVELOPE_LABELS.get(self.cfg.get("envelope", "10_double_left")))
+        ttk.Combobox(fmt, textvariable=self.w_envelope, state="readonly",
+                     values=list(ENVELOPE_LABELS.values()), width=24).grid(
+            row=1, column=1, sticky="w", padx=8, pady=3)
 
         add_fields(section("Your Company"), COMPANY_FIELDS)
         add_fields(section("Bank / Account"), BANK_FIELDS)
@@ -536,7 +540,8 @@ class CheckPrinterApp:
                 messagebox.showerror("Invalid value",
                                      f"'{val}' is not valid for {key}.")
                 return
-        self.cfg["check_format"] = FORMAT_VALUES.get(self.w_format.get(), "standard")
+        self.cfg["check_position"] = FORMAT_VALUES.get(self.w_position.get(), "bottom")
+        self.cfg["envelope"] = ENVELOPE_VALUES.get(self.w_envelope.get(), "10_double_left")
         cfgmod.save(self.cfg)
         self.w_number.set(str(self.cfg["next_check_number"]))
         messagebox.showinfo("Saved", "Settings saved.")

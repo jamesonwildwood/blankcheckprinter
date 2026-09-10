@@ -273,10 +273,15 @@ def _draw_perf_guides(c, cfg):
     c.setDash()
 
 
+def _has_window_envelope(cfg):
+    """True when a window envelope is selected (address panel is printed)."""
+    return cfg.get("envelope", "10_double_left") not in (None, "", "none")
+
+
 def _draw_page_content(c, cfg, check):
     """Draw the stubs + check for one page (shared by real and test output)."""
     bh = cfg["check_band_height"] * inch
-    window = cfg.get("check_format") == "window"
+    window = _has_window_envelope(cfg)
     n = cfg.get("num_stubs", 0)
     for i in range(n):
         yb = (i + 1) * bh
@@ -400,15 +405,14 @@ def build_alignment_pdf(cfg, out_path):
     _label(c, tx + 0.03 * inch, base + 0.7 * inch,
            f'left transit: {tx / inch:.2f}" from left', size=6)
 
-    # Envelope window outlines on the top fold (window format only)
-    if cfg.get("check_format") == "window":
+    # Envelope window outlines on the top fold (window envelope only)
+    if _has_window_envelope(cfg):
         n = cfg.get("num_stubs", 0)
         if n >= 1:
             _draw_window_guides(c, n * bh, prefix="TOP FOLD ")
 
-    fmt = "WINDOW ENVELOPE" if cfg.get("check_format") == "window" else "STANDARD"
     _label(c, LM, PAGE_H - 0.3 * inch,
-           f"ALIGNMENT TEST ({fmt}) — VOID $0.00 sample, routing/account 999999999. "
+           "ALIGNMENT TEST — VOID $0.00 sample, routing/account 999999999. "
            f"1in grid; band {cfg['check_band_height']}in, stubs {cfg['num_stubs']}.",
            size=8)
     c.showPage()

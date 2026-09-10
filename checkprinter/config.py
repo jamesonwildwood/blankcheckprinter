@@ -49,8 +49,9 @@ DEFAULTS = {
     "draw_border": False,       # draw a border around the check (open top)
     "draw_perf_guides": False,  # draw dashed perforation guide lines
     "signature_text": "AUTHORIZED SIGNATURE",
-    # --- Window-envelope format ---
-    "check_format": "standard",   # standard | window (double-window envelope)
+    # --- Check stock / envelope ---
+    "check_position": "bottom",   # bottom (later: top) — where the check sits
+    "envelope": "10_double_left", # #10 double left-window envelope
     "window_payee_dx": 0.0,       # nudge the payee address block (inches, right +)
     "window_payee_dy": 0.0,       # nudge the payee address block (inches, up +)
     "window_return_dx": 0.0,      # nudge the company return-address block
