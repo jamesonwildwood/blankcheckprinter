@@ -199,24 +199,24 @@ def draw_window_check(c, cfg, check):
     rdx = cfg.get("window_return_dx", 0.0) * inch
     rdy = cfg.get("window_return_dy", 0.0) * inch
 
-    # --- Company return address (top window) ---
+    # --- Company return address (top window); top line aligned to the bank name ---
     rx0 = 0.55 * inch + rdx
     c.setFont("Helvetica-Bold", 11)
-    c.drawString(rx0, 3.26 * inch + rdy, cfg.get("company_name", ""))
+    c.drawString(rx0, 3.00 * inch + rdy, cfg.get("company_name", ""))
     c.setFont("Helvetica", 8.5)
-    yy = 3.08 * inch + rdy
+    yy = 2.82 * inch + rdy
     for key in ("company_address", "company_citystate"):
         if cfg.get(key):
             c.drawString(rx0, yy, cfg[key])
             yy -= 0.14 * inch
 
-    # --- Check number + fraction (top-right) ---
+    # --- Check number + fraction (top-right, aligned to the bank name) ---
     c.setFont("Helvetica", 8)
-    c.drawRightString(RX - 0.62 * inch, 3.28 * inch, "No.")
+    c.drawRightString(RX - 0.62 * inch, 3.00 * inch, "No.")
     c.setFont("Helvetica-Bold", 13)
-    c.drawRightString(RX, 3.28 * inch, str(check["number"]))
+    c.drawRightString(RX, 3.00 * inch, str(check["number"]))
     if cfg.get("fraction"):
-        _label(c, RX, 3.08 * inch, cfg["fraction"], size=8, align="right")
+        _label(c, RX, 2.82 * inch, cfg["fraction"], size=8, align="right")
 
     # --- Bank name / city (top-right-middle) ---
     bx = 4.75 * inch
