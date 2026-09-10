@@ -30,8 +30,15 @@ CLEAR_BAND = 0.625 * inch               # MICR clear band; keep other ink above
 # Double-window envelope guides (OSDS Payroll, 3-7/8 x 9-1/4"), as (x, y, w, h)
 # in inches from the check's bottom-left, assuming the check is inserted flush to
 # the envelope's bottom-left. Bottom window = payee (recipient); top = return.
-ENV_BOTTOM_WINDOW = (0.875, 0.75, 3.5, 1.0)
-ENV_TOP_WINDOW = (0.375, 2.5, 3.5, 0.875)
+# Both windows are left-aligned at ~0.25" on the envelope.
+ENV_BOTTOM_WINDOW = (0.25, 0.75, 3.5, 1.0)    # payee window
+ENV_TOP_WINDOW = (0.25, 2.5, 3.5, 0.875)      # return window
+
+# Left edge (inches) of the return-address (From) and payee (To) blocks within a
+# panel; both aligned to the windows' left edge. Nudge further with the
+# window_return_dx / window_payee_dx offsets in Settings.
+WIN_RETURN_X = 0.25     # From block
+WIN_PAYEE_X = 0.25      # To block
 
 
 def _line(c, x1, x2, y, width=0.7):
@@ -200,7 +207,7 @@ def draw_window_check(c, cfg, check):
     rdy = cfg.get("window_return_dy", 0.0) * inch
 
     # --- Company return address (top window); top line aligned to the bank name ---
-    rx0 = 0.55 * inch + rdx
+    rx0 = WIN_RETURN_X * inch + rdx
     c.setFont("Helvetica-Bold", 11)
     c.drawString(rx0, 3.00 * inch + rdy, cfg.get("company_name", ""))
     c.setFont("Helvetica", 8.5)
@@ -254,7 +261,7 @@ def draw_window_check(c, cfg, check):
 
     # --- "PAY TO THE ORDER OF" + payee mailing address (bottom window) ---
     _label(c, LM, 1.86 * inch, "PAY TO THE ORDER OF", size=6)
-    px0 = 1.00 * inch + pdx
+    px0 = WIN_PAYEE_X * inch + pdx
     c.setFont("Helvetica-Bold", 12)
     c.drawString(px0, 1.50 * inch + pdy, check.get("payee", ""))
     c.setFont("Helvetica", 10.5)
@@ -295,7 +302,7 @@ def draw_window_address_panel(c, cfg, check, y_bottom):
     rdy = cfg.get("window_return_dy", 0.0) * inch
 
     # From (company) — top window position
-    rx0 = 0.55 * inch + rdx
+    rx0 = WIN_RETURN_X * inch + rdx
     c.setFont("Helvetica-Bold", 11)
     c.drawString(rx0, y_bottom + 3.00 * inch + rdy, cfg.get("company_name", ""))
     c.setFont("Helvetica", 8.5)
@@ -306,7 +313,7 @@ def draw_window_address_panel(c, cfg, check, y_bottom):
             yy -= 0.14 * inch
 
     # To (payee) — bottom window position
-    px0 = 1.00 * inch + pdx
+    px0 = WIN_PAYEE_X * inch + pdx
     c.setFont("Helvetica-Bold", 12)
     c.drawString(px0, y_bottom + 1.50 * inch + pdy, check.get("payee", ""))
     c.setFont("Helvetica", 10.5)
