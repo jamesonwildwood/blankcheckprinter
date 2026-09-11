@@ -167,9 +167,18 @@ and keeps the routing/transit fixed no matter how many digits the check number
 has. **MICR height — from bottom (in)** sets the vertical position. Both are
 0.01" spinboxes. The **Print Alignment Test** page marks where the left transit
 lands so you can dial it to your stock. (`left`/`center`/`right` anchor the
-whole line instead.) To use a licensed E-13B
-TrueType font instead, drop it in `fonts/` and pick it in Settings (see
-`fonts/README.txt`).
+whole line instead.)
+
+**Using a real E-13B font instead:** the built-in glyphs need no font, but if
+you'd rather supply a licensed/certified E-13B TrueType font, drop the `.ttf` in
+`fonts/` and pick it in Settings (see `fonts/README.txt`). Look one up yourself:
+
+- Free "MICR Encoding" (Digital Graphic Labs): <https://www.1001fonts.com/micr-encoding-font.html>
+- More free E-13B options: <https://www.1001fonts.com/micr-e-13b-fonts.html>
+- Commercial / certified fonts (IDAutomation): <https://www.idautomation.com/micr-fonts/e13b/>
+
+Only add a font you're licensed to use, and confirm it prints to E-13B spec
+before relying on it for the bank.
 
 ## Where your data lives
 
