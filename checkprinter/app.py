@@ -42,6 +42,11 @@ LAYOUT_FIELDS = [
     ("draw_perf_guides", "Draw dashed perforation guides", "bool"),
 ]
 
+# Register CSV columns. bank_profile/business scope check numbers per account.
+REGISTER_HEADER = ["printed_at", "check_number", "date", "payee", "amount",
+                   "memo", "bank_profile", "business"]
+
+PRINTER_DEFAULT_SLOT = "(printer default)"
 NEW_PROFILE = "-- New --"
 FORMAT_LABELS = {"bottom": "Check on the Bottom", "top": "Check on the Top"}
 FORMAT_VALUES = {v: k for k, v in FORMAT_LABELS.items()}
@@ -55,6 +60,8 @@ class CheckPrinterApp:
         self.cfg = cfgmod.load()
         cfgmod.ensure_dirs()
         self.vars = {}
+        self.w_profile = tk.StringVar()    # active bank profile (shared by both tabs)
+        self.w_business = tk.StringVar()   # active business profile
 
         root.title("CheckPrinter")
         root.geometry("760x680")
@@ -78,6 +85,8 @@ class CheckPrinterApp:
         ttk.Label(f, text="Write a Check", font=("Helvetica", 15, "bold")).grid(
             row=0, column=0, columnspan=3, sticky="w", **pad)
 
+        self.w_profile.set(self.cfg.get("active_profile") or NEW_PROFILE)
+        self.w_business.set(self.cfg.get("active_business") or NEW_PROFILE)
         self.w_number = tk.StringVar(value=str(self.cfg["next_check_number"]))
         self.w_date = tk.StringVar(value=today)
         self.w_payee = tk.StringVar()
@@ -96,6 +105,22 @@ class CheckPrinterApp:
             ("Memo", self.w_memo),
         ]
         r = 1
+        ttk.Label(f, text="Business").grid(row=r, column=0, sticky="e", **pad)
+        self.write_business_cb = ttk.Combobox(
+            f, textvariable=self.w_business, state="readonly", width=45,
+            values=self._business_names())
+        self.write_business_cb.grid(row=r, column=1, columnspan=2, sticky="w", **pad)
+        self.write_business_cb.bind("<<ComboboxSelected>>",
+                                    lambda e: self._load_business_profile())
+        r += 1
+        ttk.Label(f, text="Bank account").grid(row=r, column=0, sticky="e", **pad)
+        self.write_profile_cb = ttk.Combobox(
+            f, textvariable=self.w_profile, state="readonly", width=45,
+            values=self._profile_names())
+        self.write_profile_cb.grid(row=r, column=1, columnspan=2, sticky="w", **pad)
+        self.write_profile_cb.bind("<<ComboboxSelected>>",
+                                   lambda e: self._on_profile_selected())
+        r += 1
         for label, var in rows:
             ttk.Label(f, text=label).grid(row=r, column=0, sticky="e", **pad)
             e = ttk.Entry(f, textvariable=var, width=48)
@@ -126,9 +151,19 @@ class CheckPrinterApp:
         self.printer_cb = ttk.Combobox(pr, textvariable=self.w_printer,
                                        values=printers, state="readonly", width=42)
         self.printer_cb.pack(side="left")
-        self.printer_cb.bind("<<ComboboxSelected>>", lambda e: self._save_printer())
+        self.printer_cb.bind("<<ComboboxSelected>>", lambda e: self._on_printer_selected())
         ttk.Button(pr, text="↻", width=3, command=self._refresh_printers).pack(
             side="left", padx=4)
+        r += 1
+
+        # Paper source (e.g. manual feed) for the selected printer
+        ttk.Label(f, text="Paper source").grid(row=r, column=0, sticky="e", **pad)
+        self.w_slot = tk.StringVar(value=PRINTER_DEFAULT_SLOT)
+        self.slot_cb = ttk.Combobox(f, textvariable=self.w_slot, state="readonly",
+                                    width=42, values=[PRINTER_DEFAULT_SLOT])
+        self.slot_cb.grid(row=r, column=1, columnspan=2, sticky="w", **pad)
+        self.slot_cb.bind("<<ComboboxSelected>>", lambda e: self._save_slot())
+        self._refresh_slots()
         r += 1
 
         btns = ttk.Frame(f)
@@ -196,16 +231,32 @@ class CheckPrinterApp:
         build_check_pdf(self.cfg, check, path)
         return path
 
+    def _ensure_register_header(self):
+        """Upgrade an older register (no bank_profile/business columns) in place."""
+        rows = self._register_rows()
+        if not os.path.exists(cfgmod.REGISTER_PATH):
+            return
+        with open(cfgmod.REGISTER_PATH, newline="") as f:
+            header = next(csv.reader(f), [])
+        if header == REGISTER_HEADER:
+            return
+        with open(cfgmod.REGISTER_PATH, "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=REGISTER_HEADER, extrasaction="ignore")
+            w.writeheader()
+            w.writerows(rows)
+
     def _log_register(self, check):
+        self._ensure_register_header()
         new = not os.path.exists(cfgmod.REGISTER_PATH)
         with open(cfgmod.REGISTER_PATH, "a", newline="") as f:
             w = csv.writer(f)
             if new:
-                w.writerow(["printed_at", "check_number", "date", "payee",
-                            "amount", "memo"])
+                w.writerow(REGISTER_HEADER)
             w.writerow([datetime.datetime.now().isoformat(timespec="seconds"),
                         check["number"], check["date"], check["payee"],
-                        f"{check['amount']:.2f}", check["memo"]])
+                        f"{check['amount']:.2f}", check["memo"],
+                        self.cfg.get("active_profile", ""),
+                        self.cfg.get("active_business", "")])
 
     def _advance_number(self, number):
         self.cfg["next_check_number"] = number + 1
@@ -229,12 +280,18 @@ class CheckPrinterApp:
             return []
 
     def _register_matches(self, number):
-        """Register rows whose check_number equals `number`."""
+        """Register rows for the active bank profile whose check_number is `number`.
+
+        Rows logged before bank profiles were tracked (blank bank_profile) count
+        for every bank, so an old check number is never silently reused.
+        """
         number = str(number).strip()
         if not number:
             return []
+        active = self.cfg.get("active_profile", "")
         return [r for r in self._register_rows()
-                if str(r.get("check_number", "")).strip() == number]
+                if str(r.get("check_number", "")).strip() == number
+                and (r.get("bank_profile") or "") in ("", active)]
 
     def _update_dup_warning(self):
         matches = self._register_matches(self.w_number.get())
@@ -274,9 +331,10 @@ class CheckPrinterApp:
                    command=lambda: subprocess.run(["open", cfgmod.REGISTER_PATH])
                    ).pack(side="right")
 
-        cols = [("check_number", "Check #", 70), ("date", "Date", 90),
-                ("payee", "Pay to", 210), ("amount", "Amount", 90),
-                ("memo", "Memo", 150), ("printed_at", "Printed", 140)]
+        cols = [("check_number", "Check #", 70), ("bank_profile", "Bank", 110),
+                ("date", "Date", 90), ("payee", "Pay to", 180),
+                ("amount", "Amount", 90), ("memo", "Memo", 130),
+                ("printed_at", "Printed", 130)]
         frame = ttk.Frame(win)
         frame.pack(fill="both", expand=True, padx=8, pady=(0, 8))
         tree = ttk.Treeview(frame, columns=[c[0] for c in cols], show="headings")
@@ -294,8 +352,9 @@ class CheckPrinterApp:
             except (ValueError, TypeError):
                 pass
             tree.insert("", "end", values=(row.get("check_number", ""),
-                        row.get("date", ""), row.get("payee", ""), amt,
-                        row.get("memo", ""), row.get("printed_at", "")))
+                        row.get("bank_profile", ""), row.get("date", ""),
+                        row.get("payee", ""), amt, row.get("memo", ""),
+                        row.get("printed_at", "")))
         if not rows:
             ttk.Label(win, text="No checks recorded yet.",
                       foreground="#555").pack(pady=8)
@@ -326,7 +385,69 @@ class CheckPrinterApp:
         self.printer_cb["values"] = printers
         if self.w_printer.get() not in printers:
             self.w_printer.set(default or (printers[0] if printers else ""))
+        self._on_printer_selected()
+
+    def _on_printer_selected(self):
         self._save_printer()
+        self._refresh_slots()
+
+    def _slot_options(self, printer):
+        """Return (option_key, [values]) for the printer's paper-source option.
+
+        Reads `lpoptions -l`; the key is InputSlot on most drivers, but some
+        use a vendor prefix (e.g. KMInputSlot). (None, []) if unsupported.
+        """
+        cmd = ["lpoptions", "-l"]
+        if printer:
+            cmd = ["lpoptions", "-p", printer, "-l"]
+        try:
+            out = subprocess.run(cmd, capture_output=True, text=True).stdout
+        except Exception:
+            return None, []
+        for line in out.splitlines():
+            head, _, vals = line.partition(":")
+            key = head.split("/")[0]
+            if key.endswith("InputSlot") and "-" not in key:
+                return key, [v.lstrip("*") for v in vals.split()]
+        return None, []
+
+    def _refresh_slots(self):
+        """Repopulate the Paper source dropdown for the selected printer."""
+        printer = self.w_printer.get().strip()
+        key, values = self._slot_options(printer)
+        self.slot_key = key
+        if not key:
+            self.slot_cb["values"] = [PRINTER_DEFAULT_SLOT]
+            self.w_slot.set("(not supported by this printer)")
+            self.slot_cb.state(["disabled"])
+            return
+        self.slot_cb.state(["!disabled"])
+        self.slot_cb["values"] = [PRINTER_DEFAULT_SLOT] + values
+        saved = self.cfg.get("paper_sources", {}).get(printer, "")
+        self.w_slot.set(saved if saved in values else PRINTER_DEFAULT_SLOT)
+
+    def _save_slot(self):
+        """Remember the chosen paper source for the selected printer."""
+        printer = self.w_printer.get().strip()
+        choice = self.w_slot.get()
+        sources = self.cfg.setdefault("paper_sources", {})
+        if choice == PRINTER_DEFAULT_SLOT:
+            sources.pop(printer, None)
+        else:
+            sources[printer] = choice
+        cfgmod.save(self.cfg)
+
+    def _lpr_cmd(self, path):
+        """lpr command for the selected printer and paper source."""
+        cmd = ["lpr"]
+        printer = self.w_printer.get().strip()
+        if printer:
+            cmd += ["-P", printer]
+        slot = self.w_slot.get()
+        if getattr(self, "slot_key", None) and slot != PRINTER_DEFAULT_SLOT:
+            cmd += ["-o", f"{self.slot_key}={slot}"]
+        cmd.append(path)
+        return cmd
 
     def _save_printer(self):
         """Remember the selected printer across runs."""
@@ -347,6 +468,63 @@ class CheckPrinterApp:
 
     def _refresh_profiles(self):
         self.profile_cb["values"] = self._profile_choices()
+        self.write_profile_cb["values"] = self._profile_names()
+
+    # ---------- Business (maker name/address) profiles ----------
+    BUSINESS_KEYS = tuple(k for k, _, _ in COMPANY_FIELDS)
+
+    def _business_names(self):
+        return [p.get("nickname", "") for p in self.cfg.get("business_profiles", [])]
+
+    def _refresh_businesses(self):
+        self.business_cb["values"] = [NEW_PROFILE] + self._business_names()
+        self.write_business_cb["values"] = self._business_names()
+
+    def _new_business_profile(self):
+        self.w_business_nickname.set("")
+        for k in self.BUSINESS_KEYS:
+            if k in self.vars:
+                self.vars[k].set("")
+        self.cfg["active_business"] = ""
+        cfgmod.save(self.cfg)
+
+    def _save_business_profile(self):
+        nickname = self.w_business_nickname.get().strip()
+        if not nickname:
+            messagebox.showerror("Nickname required",
+                                 "Enter a nickname to save this business.")
+            return
+        prof = {"nickname": nickname}
+        for k in self.BUSINESS_KEYS:
+            prof[k] = self.vars[k].get().strip()
+        profiles = [p for p in self.cfg.get("business_profiles", [])
+                    if p.get("nickname") != nickname]
+        profiles.append(prof)
+        self.cfg["business_profiles"] = profiles
+        self.cfg["active_business"] = nickname
+        for k in self.BUSINESS_KEYS:
+            self.cfg[k] = prof[k]
+        cfgmod.save(self.cfg)
+        self._refresh_businesses()
+        self.w_business.set(nickname)
+        messagebox.showinfo("Saved", f"Saved business profile '{nickname}'.")
+
+    def _load_business_profile(self):
+        nickname = self.w_business.get()
+        if nickname == NEW_PROFILE:
+            self._new_business_profile()
+            return
+        prof = next((p for p in self.cfg.get("business_profiles", [])
+                     if p.get("nickname") == nickname), None)
+        if not prof:
+            return
+        for k in self.BUSINESS_KEYS:
+            self.cfg[k] = prof.get(k, "")
+            if k in self.vars:
+                self.vars[k].set(prof.get(k, ""))
+        self.w_business_nickname.set(nickname)
+        self.cfg["active_business"] = nickname
+        cfgmod.save(self.cfg)
 
     def _on_profile_selected(self):
         if self.w_profile.get() == NEW_PROFILE:
@@ -362,6 +540,7 @@ class CheckPrinterApp:
                 self.vars[k].set("")
         self.cfg["active_profile"] = ""
         cfgmod.save(self.cfg)
+        self._update_dup_warning()
 
     def _save_bank_profile(self):
         nickname = self.w_nickname.get().strip()
@@ -409,6 +588,7 @@ class CheckPrinterApp:
         self.w_nickname.set(nickname)
         self.cfg["active_profile"] = nickname
         cfgmod.save(self.cfg)
+        self._update_dup_warning()   # the number may be unchanged but the bank isn't
 
     def _clear_check_fields(self):
         """Clear payee, amount and memo for the next check (keep date)."""
@@ -451,15 +631,10 @@ class CheckPrinterApp:
             return
         if not self._dup_ok_to_proceed(check):
             return
-        printer = self.w_printer.get().strip()
         self._save_printer()
         path = self._render(check)
         # -o fit-to-page is intentionally NOT used, to preserve exact placement.
-        cmd = ["lpr"]
-        if printer:
-            cmd += ["-P", printer]
-        cmd.append(path)
-        subprocess.run(cmd)
+        subprocess.run(self._lpr_cmd(path))
         self._confirm_printed(check)
 
     def print_alignment(self):
@@ -469,11 +644,7 @@ class CheckPrinterApp:
         build_alignment_pdf(self.cfg, path)
         printer = self.w_printer.get().strip()
         target = printer or "the default printer"
-        cmd = ["lpr"]
-        if printer:
-            cmd += ["-P", printer]
-        cmd.append(path)
-        subprocess.run(cmd)
+        subprocess.run(self._lpr_cmd(path))
         messagebox.showinfo("Alignment test",
                             f"Alignment test sent to {target} (same print path as a "
                             "real check). Check the marks against your stock.")
@@ -496,8 +667,8 @@ class CheckPrinterApp:
             lf.pack(fill="x", expand=True, padx=10, pady=6)
             return lf
 
-        def add_fields(parent, fields):
-            for i, (key, label, kind) in enumerate(fields):
+        def add_fields(parent, fields, start=0):
+            for i, (key, label, kind) in enumerate(fields, start):
                 if kind == "bool":
                     var = tk.BooleanVar(value=bool(self.cfg.get(key)))
                     ttk.Checkbutton(parent, text=label, variable=var).grid(
@@ -525,18 +696,32 @@ class CheckPrinterApp:
                      values=list(ENVELOPE_LABELS.values()), width=24).grid(
             row=1, column=1, sticky="w", padx=8, pady=3)
 
-        add_fields(section("Your Company"), COMPANY_FIELDS)
+        # Your Company with saved, switchable business profiles
+        co = section("Your Company")
+        ttk.Label(co, text="Load business").grid(row=0, column=0, sticky="e", padx=8, pady=3)
+        self.business_cb = ttk.Combobox(
+            co, textvariable=self.w_business, width=28, state="readonly",
+            values=[NEW_PROFILE] + self._business_names())
+        self.business_cb.grid(row=0, column=1, sticky="w", padx=8, pady=3)
+        self.business_cb.bind("<<ComboboxSelected>>",
+                              lambda e: self._load_business_profile())
+        ttk.Label(co, text="Nickname").grid(row=1, column=0, sticky="e", padx=8, pady=3)
+        self.w_business_nickname = tk.StringVar(value=self.cfg.get("active_business", ""))
+        ttk.Entry(co, textvariable=self.w_business_nickname, width=42).grid(
+            row=1, column=1, sticky="w", padx=8, pady=3)
+        add_fields(co, COMPANY_FIELDS, start=2)
+        ttk.Button(co, text="Save Business Profile",
+                   command=self._save_business_profile).grid(
+            row=2 + len(COMPANY_FIELDS), column=1, sticky="w", padx=8, pady=6)
 
         # Bank / Account with saved, switchable profiles
         bank = section("Bank / Account")
         r = 0
         ttk.Label(bank, text="Load profile").grid(row=r, column=0, sticky="e", padx=8, pady=3)
-        self.w_profile = tk.StringVar()
         self.profile_cb = ttk.Combobox(bank, textvariable=self.w_profile, width=28,
                                        state="readonly", values=self._profile_choices())
         self.profile_cb.grid(row=r, column=1, sticky="w", padx=8, pady=3)
         self.profile_cb.bind("<<ComboboxSelected>>", lambda e: self._on_profile_selected())
-        self.w_profile.set(self.cfg.get("active_profile") or NEW_PROFILE)
         r += 1
         ttk.Label(bank, text="Nickname").grid(row=r, column=0, sticky="e", padx=8, pady=3)
         self.w_nickname = tk.StringVar(value=self.cfg.get("active_profile", ""))
@@ -652,6 +837,10 @@ class CheckPrinterApp:
                 return
         self.cfg["check_position"] = FORMAT_VALUES.get(self.w_position.get(), "bottom")
         self.cfg["envelope"] = ENVELOPE_VALUES.get(self.w_envelope.get(), "10_double_left")
+        active = self.cfg.get("active_profile")
+        for p in self.cfg.get("bank_profiles", []):
+            if active and p.get("nickname") == active:
+                p["next_check_number"] = self.cfg["next_check_number"]
         cfgmod.save(self.cfg)
         self.w_number.set(str(self.cfg["next_check_number"]))
         messagebox.showinfo("Saved", "Settings saved.")

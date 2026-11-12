@@ -33,6 +33,10 @@ DEFAULTS = {
     # nickname + bank fields + micr_template + next_check_number.
     "bank_profiles": [],
     "active_profile": "",     # nickname of the currently loaded profile
+    # Saved business (maker name/address) profiles, independent of the bank.
+    # Each is a dict with nickname + the company_* fields.
+    "business_profiles": [],
+    "active_business": "",    # nickname of the currently loaded business
     # --- MICR line ---
     "micr_template": MICR_PRESET_BUSINESS,
     "font_path": "",          # optional licensed E-13B .ttf; blank = vector glyphs
@@ -40,6 +44,7 @@ DEFAULTS = {
     "next_check_number": 1001,
     # --- Printing ---
     "printer": "",              # remembered CUPS printer name (blank = system default)
+    "paper_sources": {},        # printer name -> chosen InputSlot value (e.g. "manual")
     # --- Layout (inches) ---
     "check_band_height": 3.5,   # height of the check portion at page bottom
     "num_stubs": 2,             # record stubs printed above the check (0-2)
@@ -77,6 +82,8 @@ def load():
     out = {k: cfg.get(k, DEFAULTS[k]) for k in DEFAULTS}
     # fresh copy of the profiles list/dicts so callers never mutate DEFAULTS
     out["bank_profiles"] = [dict(p) for p in out.get("bank_profiles") or []]
+    out["business_profiles"] = [dict(p) for p in out.get("business_profiles") or []]
+    out["paper_sources"] = dict(out.get("paper_sources") or {})
     return out
 
 
